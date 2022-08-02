@@ -27,7 +27,7 @@ BULK_SIZE = 5000
 class ElasticsearchMock:
     def __init__(self, bulk_size):
         self.no_errors = {"took": 500, "errors": False, "items": []}
-        for idx in range(0, bulk_size):
+        for idx in range(bulk_size):
             self.no_errors["items"].append(
                 {
                     "index": {

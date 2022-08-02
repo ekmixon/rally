@@ -47,9 +47,7 @@ class DriverTestParamSource:
 
     @property
     def percent_completed(self):
-        if self.infinite:
-            return None
-        return self._current / self._total
+        return None if self.infinite else self._current / self._total
 
     def params(self):
         if not self.infinite and self._current > self._total:
@@ -288,9 +286,42 @@ class SamplePostprocessorTests(TestCase):
 
         task = track.Task("index", track.Operation("index-op", "bulk", param_source="driver-test-param-source"))
         samples = [
-            driver.Sample(0, 38598, 24, 0, task, metrics.SampleType.Normal, None, 0.01, 0.007, 0.009, None, 5000, "docs", 1, 1 / 2),
-            driver.Sample(0, 38599, 25, 0, task, metrics.SampleType.Normal, None, 0.01, 0.007, 0.009, None, 5000, "docs", 2, 2 / 2),
+            driver.Sample(
+                0,
+                38598,
+                24,
+                0,
+                task,
+                metrics.SampleType.Normal,
+                None,
+                0.01,
+                0.007,
+                0.009,
+                None,
+                5000,
+                "docs",
+                1,
+                1 / 2,
+            ),
+            driver.Sample(
+                0,
+                38599,
+                25,
+                0,
+                task,
+                metrics.SampleType.Normal,
+                None,
+                0.01,
+                0.007,
+                0.009,
+                None,
+                5000,
+                "docs",
+                2,
+                1,
+            ),
         ]
+
 
         post_process(samples)
 
@@ -313,9 +344,42 @@ class SamplePostprocessorTests(TestCase):
         task = track.Task("index", track.Operation("index-op", "bulk", param_source="driver-test-param-source"))
 
         samples = [
-            driver.Sample(0, 38598, 24, 0, task, metrics.SampleType.Normal, None, 0.01, 0.007, 0.009, None, 5000, "docs", 1, 1 / 2),
-            driver.Sample(0, 38599, 25, 0, task, metrics.SampleType.Normal, None, 0.01, 0.007, 0.009, None, 5000, "docs", 2, 2 / 2),
+            driver.Sample(
+                0,
+                38598,
+                24,
+                0,
+                task,
+                metrics.SampleType.Normal,
+                None,
+                0.01,
+                0.007,
+                0.009,
+                None,
+                5000,
+                "docs",
+                1,
+                1 / 2,
+            ),
+            driver.Sample(
+                0,
+                38599,
+                25,
+                0,
+                task,
+                metrics.SampleType.Normal,
+                None,
+                0.01,
+                0.007,
+                0.009,
+                None,
+                5000,
+                "docs",
+                2,
+                1,
+            ),
         ]
+
 
         post_process(samples)
 
@@ -812,16 +876,161 @@ class MetricsAggregationTests(TestCase):
         op = track.Operation("index", track.OperationType.Bulk, param_source="driver-test-param-source")
 
         samples = [
-            driver.Sample(0, 38595, 21, 0, op, metrics.SampleType.Normal, None, -1, -1, -1, None, 5000, "docs", 1, 1 / 9),
-            driver.Sample(0, 38596, 22, 0, op, metrics.SampleType.Normal, None, -1, -1, -1, None, 5000, "docs", 2, 2 / 9),
-            driver.Sample(0, 38597, 23, 0, op, metrics.SampleType.Normal, None, -1, -1, -1, None, 5000, "docs", 3, 3 / 9),
-            driver.Sample(0, 38598, 24, 0, op, metrics.SampleType.Normal, None, -1, -1, -1, None, 5000, "docs", 4, 4 / 9),
-            driver.Sample(0, 38599, 25, 0, op, metrics.SampleType.Normal, None, -1, -1, -1, None, 5000, "docs", 5, 5 / 9),
-            driver.Sample(0, 38600, 26, 0, op, metrics.SampleType.Normal, None, -1, -1, -1, None, 5000, "docs", 6, 6 / 9),
-            driver.Sample(1, 38598.5, 24.5, 0, op, metrics.SampleType.Normal, None, -1, -1, -1, None, 5000, "docs", 4.5, 7 / 9),
-            driver.Sample(1, 38599.5, 25.5, 0, op, metrics.SampleType.Normal, None, -1, -1, -1, None, 5000, "docs", 5.5, 8 / 9),
-            driver.Sample(1, 38600.5, 26.5, 0, op, metrics.SampleType.Normal, None, -1, -1, -1, None, 5000, "docs", 6.5, 9 / 9),
+            driver.Sample(
+                0,
+                38595,
+                21,
+                0,
+                op,
+                metrics.SampleType.Normal,
+                None,
+                -1,
+                -1,
+                -1,
+                None,
+                5000,
+                "docs",
+                1,
+                1 / 9,
+            ),
+            driver.Sample(
+                0,
+                38596,
+                22,
+                0,
+                op,
+                metrics.SampleType.Normal,
+                None,
+                -1,
+                -1,
+                -1,
+                None,
+                5000,
+                "docs",
+                2,
+                2 / 9,
+            ),
+            driver.Sample(
+                0,
+                38597,
+                23,
+                0,
+                op,
+                metrics.SampleType.Normal,
+                None,
+                -1,
+                -1,
+                -1,
+                None,
+                5000,
+                "docs",
+                3,
+                3 / 9,
+            ),
+            driver.Sample(
+                0,
+                38598,
+                24,
+                0,
+                op,
+                metrics.SampleType.Normal,
+                None,
+                -1,
+                -1,
+                -1,
+                None,
+                5000,
+                "docs",
+                4,
+                4 / 9,
+            ),
+            driver.Sample(
+                0,
+                38599,
+                25,
+                0,
+                op,
+                metrics.SampleType.Normal,
+                None,
+                -1,
+                -1,
+                -1,
+                None,
+                5000,
+                "docs",
+                5,
+                5 / 9,
+            ),
+            driver.Sample(
+                0,
+                38600,
+                26,
+                0,
+                op,
+                metrics.SampleType.Normal,
+                None,
+                -1,
+                -1,
+                -1,
+                None,
+                5000,
+                "docs",
+                6,
+                6 / 9,
+            ),
+            driver.Sample(
+                1,
+                38598.5,
+                24.5,
+                0,
+                op,
+                metrics.SampleType.Normal,
+                None,
+                -1,
+                -1,
+                -1,
+                None,
+                5000,
+                "docs",
+                4.5,
+                7 / 9,
+            ),
+            driver.Sample(
+                1,
+                38599.5,
+                25.5,
+                0,
+                op,
+                metrics.SampleType.Normal,
+                None,
+                -1,
+                -1,
+                -1,
+                None,
+                5000,
+                "docs",
+                5.5,
+                8 / 9,
+            ),
+            driver.Sample(
+                1,
+                38600.5,
+                26.5,
+                0,
+                op,
+                metrics.SampleType.Normal,
+                None,
+                -1,
+                -1,
+                -1,
+                None,
+                5000,
+                "docs",
+                6.5,
+                1,
+            ),
         ]
+
 
         aggregated = self.calculate_global_throughput(samples)
 
@@ -842,10 +1051,59 @@ class MetricsAggregationTests(TestCase):
         op = track.Operation("index-recovery", track.OperationType.WaitForRecovery, param_source="driver-test-param-source")
 
         samples = [
-            driver.Sample(0, 38595, 21, 0, op, metrics.SampleType.Normal, None, -1, -1, -1, 8000, 5000, "byte", 1, 1 / 3),
-            driver.Sample(0, 38596, 22, 0, op, metrics.SampleType.Normal, None, -1, -1, -1, 8000, 5000, "byte", 2, 2 / 3),
-            driver.Sample(0, 38597, 23, 0, op, metrics.SampleType.Normal, None, -1, -1, -1, 8000, 5000, "byte", 3, 3 / 3),
+            driver.Sample(
+                0,
+                38595,
+                21,
+                0,
+                op,
+                metrics.SampleType.Normal,
+                None,
+                -1,
+                -1,
+                -1,
+                8000,
+                5000,
+                "byte",
+                1,
+                1 / 3,
+            ),
+            driver.Sample(
+                0,
+                38596,
+                22,
+                0,
+                op,
+                metrics.SampleType.Normal,
+                None,
+                -1,
+                -1,
+                -1,
+                8000,
+                5000,
+                "byte",
+                2,
+                2 / 3,
+            ),
+            driver.Sample(
+                0,
+                38597,
+                23,
+                0,
+                op,
+                metrics.SampleType.Normal,
+                None,
+                -1,
+                -1,
+                -1,
+                8000,
+                5000,
+                "byte",
+                3,
+                1,
+            ),
         ]
+
 
         aggregated = self.calculate_global_throughput(samples)
 
@@ -965,8 +1223,9 @@ class SchedulerTests(TestCase):
             (0.4, metrics.SampleType.Normal, 5 / 8, {"operation-type": "search"}),
             (0.5, metrics.SampleType.Normal, 6 / 8, {"operation-type": "search"}),
             (0.6, metrics.SampleType.Normal, 7 / 8, {"operation-type": "search"}),
-            (0.7, metrics.SampleType.Normal, 8 / 8, {"operation-type": "search"}),
+            (0.7, metrics.SampleType.Normal, 1, {"operation-type": "search"}),
         ]
+
         await self.assert_schedule(expected_schedule, schedule)
 
     @run_async
@@ -989,8 +1248,9 @@ class SchedulerTests(TestCase):
             (0.4, metrics.SampleType.Normal, 3 / 6, {"operation-type": "search"}),
             (0.6, metrics.SampleType.Normal, 4 / 6, {"operation-type": "search"}),
             (0.8, metrics.SampleType.Normal, 5 / 6, {"operation-type": "search"}),
-            (1.0, metrics.SampleType.Normal, 6 / 6, {"operation-type": "search"}),
+            (1.0, metrics.SampleType.Normal, 1, {"operation-type": "search"}),
         ]
+
         await self.assert_schedule(expected_schedule, schedule)
 
     @run_async
@@ -1014,9 +1274,24 @@ class SchedulerTests(TestCase):
 
         await self.assert_schedule(
             [
-                (0.0, metrics.SampleType.Normal, 1 / 3, {"body": ["a"], "operation-type": "bulk", "size": 3}),
-                (1.0, metrics.SampleType.Normal, 2 / 3, {"body": ["a"], "operation-type": "bulk", "size": 3}),
-                (2.0, metrics.SampleType.Normal, 3 / 3, {"body": ["a"], "operation-type": "bulk", "size": 3}),
+                (
+                    0.0,
+                    metrics.SampleType.Normal,
+                    1 / 3,
+                    {"body": ["a"], "operation-type": "bulk", "size": 3},
+                ),
+                (
+                    1.0,
+                    metrics.SampleType.Normal,
+                    2 / 3,
+                    {"body": ["a"], "operation-type": "bulk", "size": 3},
+                ),
+                (
+                    2.0,
+                    metrics.SampleType.Normal,
+                    1,
+                    {"body": ["a"], "operation-type": "bulk", "size": 3},
+                ),
             ],
             schedule,
         )
@@ -1042,11 +1317,36 @@ class SchedulerTests(TestCase):
 
         await self.assert_schedule(
             [
-                (0.0, metrics.SampleType.Warmup, 1 / 5, {"body": ["a"], "operation-type": "bulk", "size": 5}),
-                (1.0, metrics.SampleType.Warmup, 2 / 5, {"body": ["a"], "operation-type": "bulk", "size": 5}),
-                (2.0, metrics.SampleType.Normal, 3 / 5, {"body": ["a"], "operation-type": "bulk", "size": 5}),
-                (3.0, metrics.SampleType.Normal, 4 / 5, {"body": ["a"], "operation-type": "bulk", "size": 5}),
-                (4.0, metrics.SampleType.Normal, 5 / 5, {"body": ["a"], "operation-type": "bulk", "size": 5}),
+                (
+                    0.0,
+                    metrics.SampleType.Warmup,
+                    1 / 5,
+                    {"body": ["a"], "operation-type": "bulk", "size": 5},
+                ),
+                (
+                    1.0,
+                    metrics.SampleType.Warmup,
+                    2 / 5,
+                    {"body": ["a"], "operation-type": "bulk", "size": 5},
+                ),
+                (
+                    2.0,
+                    metrics.SampleType.Normal,
+                    3 / 5,
+                    {"body": ["a"], "operation-type": "bulk", "size": 5},
+                ),
+                (
+                    3.0,
+                    metrics.SampleType.Normal,
+                    4 / 5,
+                    {"body": ["a"], "operation-type": "bulk", "size": 5},
+                ),
+                (
+                    4.0,
+                    metrics.SampleType.Normal,
+                    1,
+                    {"body": ["a"], "operation-type": "bulk", "size": 5},
+                ),
             ],
             schedule,
         )
@@ -1072,7 +1372,12 @@ class SchedulerTests(TestCase):
 
         await self.assert_schedule(
             [
-                (0.0, metrics.SampleType.Normal, 1 / 1, {"body": ["a"], "operation-type": "bulk"}),
+                (
+                    0.0,
+                    metrics.SampleType.Normal,
+                    1,
+                    {"body": ["a"], "operation-type": "bulk"},
+                )
             ],
             schedule,
         )
@@ -1098,17 +1403,72 @@ class SchedulerTests(TestCase):
 
         await self.assert_schedule(
             [
-                (0.0, metrics.SampleType.Normal, 1 / 11, {"body": ["a"], "operation-type": "bulk", "size": 11}),
-                (1.0, metrics.SampleType.Normal, 2 / 11, {"body": ["a"], "operation-type": "bulk", "size": 11}),
-                (2.0, metrics.SampleType.Normal, 3 / 11, {"body": ["a"], "operation-type": "bulk", "size": 11}),
-                (3.0, metrics.SampleType.Normal, 4 / 11, {"body": ["a"], "operation-type": "bulk", "size": 11}),
-                (4.0, metrics.SampleType.Normal, 5 / 11, {"body": ["a"], "operation-type": "bulk", "size": 11}),
-                (5.0, metrics.SampleType.Normal, 6 / 11, {"body": ["a"], "operation-type": "bulk", "size": 11}),
-                (6.0, metrics.SampleType.Normal, 7 / 11, {"body": ["a"], "operation-type": "bulk", "size": 11}),
-                (7.0, metrics.SampleType.Normal, 8 / 11, {"body": ["a"], "operation-type": "bulk", "size": 11}),
-                (8.0, metrics.SampleType.Normal, 9 / 11, {"body": ["a"], "operation-type": "bulk", "size": 11}),
-                (9.0, metrics.SampleType.Normal, 10 / 11, {"body": ["a"], "operation-type": "bulk", "size": 11}),
-                (10.0, metrics.SampleType.Normal, 11 / 11, {"body": ["a"], "operation-type": "bulk", "size": 11}),
+                (
+                    0.0,
+                    metrics.SampleType.Normal,
+                    1 / 11,
+                    {"body": ["a"], "operation-type": "bulk", "size": 11},
+                ),
+                (
+                    1.0,
+                    metrics.SampleType.Normal,
+                    2 / 11,
+                    {"body": ["a"], "operation-type": "bulk", "size": 11},
+                ),
+                (
+                    2.0,
+                    metrics.SampleType.Normal,
+                    3 / 11,
+                    {"body": ["a"], "operation-type": "bulk", "size": 11},
+                ),
+                (
+                    3.0,
+                    metrics.SampleType.Normal,
+                    4 / 11,
+                    {"body": ["a"], "operation-type": "bulk", "size": 11},
+                ),
+                (
+                    4.0,
+                    metrics.SampleType.Normal,
+                    5 / 11,
+                    {"body": ["a"], "operation-type": "bulk", "size": 11},
+                ),
+                (
+                    5.0,
+                    metrics.SampleType.Normal,
+                    6 / 11,
+                    {"body": ["a"], "operation-type": "bulk", "size": 11},
+                ),
+                (
+                    6.0,
+                    metrics.SampleType.Normal,
+                    7 / 11,
+                    {"body": ["a"], "operation-type": "bulk", "size": 11},
+                ),
+                (
+                    7.0,
+                    metrics.SampleType.Normal,
+                    8 / 11,
+                    {"body": ["a"], "operation-type": "bulk", "size": 11},
+                ),
+                (
+                    8.0,
+                    metrics.SampleType.Normal,
+                    9 / 11,
+                    {"body": ["a"], "operation-type": "bulk", "size": 11},
+                ),
+                (
+                    9.0,
+                    metrics.SampleType.Normal,
+                    10 / 11,
+                    {"body": ["a"], "operation-type": "bulk", "size": 11},
+                ),
+                (
+                    10.0,
+                    metrics.SampleType.Normal,
+                    1,
+                    {"body": ["a"], "operation-type": "bulk", "size": 11},
+                ),
             ],
             schedule,
         )
@@ -1165,11 +1525,36 @@ class SchedulerTests(TestCase):
 
         await self.assert_schedule(
             [
-                (0.0, metrics.SampleType.Normal, 1 / 5, {"body": ["a"], "operation-type": "bulk", "size": 5}),
-                (1.0, metrics.SampleType.Normal, 2 / 5, {"body": ["a"], "operation-type": "bulk", "size": 5}),
-                (2.0, metrics.SampleType.Normal, 3 / 5, {"body": ["a"], "operation-type": "bulk", "size": 5}),
-                (3.0, metrics.SampleType.Normal, 4 / 5, {"body": ["a"], "operation-type": "bulk", "size": 5}),
-                (4.0, metrics.SampleType.Normal, 5 / 5, {"body": ["a"], "operation-type": "bulk", "size": 5}),
+                (
+                    0.0,
+                    metrics.SampleType.Normal,
+                    1 / 5,
+                    {"body": ["a"], "operation-type": "bulk", "size": 5},
+                ),
+                (
+                    1.0,
+                    metrics.SampleType.Normal,
+                    2 / 5,
+                    {"body": ["a"], "operation-type": "bulk", "size": 5},
+                ),
+                (
+                    2.0,
+                    metrics.SampleType.Normal,
+                    3 / 5,
+                    {"body": ["a"], "operation-type": "bulk", "size": 5},
+                ),
+                (
+                    3.0,
+                    metrics.SampleType.Normal,
+                    4 / 5,
+                    {"body": ["a"], "operation-type": "bulk", "size": 5},
+                ),
+                (
+                    4.0,
+                    metrics.SampleType.Normal,
+                    1,
+                    {"body": ["a"], "operation-type": "bulk", "size": 5},
+                ),
             ],
             schedule,
             infinite_schedule=False,

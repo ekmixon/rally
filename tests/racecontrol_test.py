@@ -36,8 +36,10 @@ def running_in_docker():
 def benchmark_only_pipeline():
     test_pipeline_name = "benchmark-only"
     original = racecontrol.pipelines[test_pipeline_name]
-    pipeline = racecontrol.Pipeline(test_pipeline_name, "Pipeline intended for unit-testing", mock.Mock())
-    yield pipeline
+    yield racecontrol.Pipeline(
+        test_pipeline_name, "Pipeline intended for unit-testing", mock.Mock()
+    )
+
     # restore prior pipeline!
     racecontrol.pipelines[test_pipeline_name] = original
 

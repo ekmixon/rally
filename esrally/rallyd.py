@@ -37,7 +37,9 @@ def start(args):
     if actor.actor_system_already_running():
         raise exceptions.RallyError("An actor system appears to be already running.")
     actor.bootstrap_actor_system(local_ip=args.node_ip, coordinator_ip=args.coordinator_ip)
-    console.info("Successfully started actor system on node [%s] with coordinator node IP [%s]." % (args.node_ip, args.coordinator_ip))
+    console.info(
+        f"Successfully started actor system on node [{args.node_ip}] with coordinator node IP [{args.coordinator_ip}]."
+    )
 
 
 def stop(raise_errors=True):
@@ -85,10 +87,14 @@ def main():
     parser = argparse.ArgumentParser(
         prog=PROGRAM_NAME,
         description=BANNER + "\n\n Rally daemon to support remote benchmarks",
-        epilog="Find out more about Rally at {}".format(console.format.link(doc_link())),
+        epilog=f"Find out more about Rally at {console.format.link(doc_link())}",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("--version", action="version", version="%(prog)s " + version.version())
+
+    parser.add_argument(
+        "--version", action="version", version=f"%(prog)s {version.version()}"
+    )
+
 
     subparsers = parser.add_subparsers(title="subcommands", dest="subcommand", help="")
     subparsers.required = True
@@ -113,7 +119,7 @@ def main():
         stop(raise_errors=False)
         start(args)
     else:
-        raise exceptions.RallyError("Unknown subcommand [%s]" % args.subcommand)
+        raise exceptions.RallyError(f"Unknown subcommand [{args.subcommand}]")
 
 
 if __name__ == "__main__":

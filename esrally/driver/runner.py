@@ -123,8 +123,9 @@ def register_runner(operation_type, runner, **kwargs):
 
     if not async_runner:
         raise exceptions.RallyAssertionError(
-            "Runner [{}] must be implemented as async runner and registered with async_runner=True.".format(str(runner))
+            f"Runner [{str(runner)}] must be implemented as async runner and registered with async_runner=True."
         )
+
 
     if getattr(runner, "multi_cluster", False):
         if "__aenter__" in dir(runner) and "__aexit__" in dir(runner):
@@ -227,8 +228,7 @@ def unwrap(runner):
     :param runner: An arbitrarily nested chain of delegators around a runner.
     :return: The innermost runner.
     """
-    delegate = getattr(runner, "delegate", None)
-    if delegate:
+    if delegate := getattr(runner, "delegate", None):
         return unwrap(delegate)
     else:
         return runner
@@ -321,9 +321,9 @@ class MultiClientRunner(Runner, Delegator):
 
     def __repr__(self, *args, **kwargs):
         if self.context_manager_enabled:
-            return "user-defined context-manager enabled runner for [%s]" % self.name
+            return f"user-defined context-manager enabled runner for [{self.name}]"
         else:
-            return "user-defined runner for [%s]" % self.name
+            return f"user-defined runner for [{self.name}]"
 
     async def __aenter__(self):
         if self.context_manager_enabled:
@@ -418,9 +418,7 @@ def mandatory(params, key, op):
 # TODO: remove and use https://docs.python.org/3/library/stdtypes.html#str.removeprefix
 #  once Python 3.9 becomes the minimum version
 def remove_prefix(string, prefix):
-    if string.startswith(prefix):
-        return string[len(prefix) :]
-    return string
+    return string[len(prefix) :] if string.startswith(prefix) else string
 
 
 def escape(v):
@@ -505,7 +503,7 @@ class BulkIndex(Runner):
             "weight": bulk_size,
             "unit": unit,
         }
-        meta_data.update(stats)
+        meta_data |= stats
         if not stats["success"]:
             meta_data["error-type"] = "bulk"
         return meta_data
@@ -529,12 +527,12 @@ class BulkIndex(Runner):
 
         for line_number, data in enumerate(bulk_lines):
             line_size = len(data.encode("utf-8"))
-            if with_action_metadata:
-                if line_number % 2 == 1:
-                    total_document_size_bytes += line_size
-            else:
+            if (
+                with_action_metadata
+                and line_number % 2 == 1
+                or not with_action_metadata
+            ):
                 total_document_size_bytes += line_size
-
             bulk_request_size_bytes += line_size
 
         for item in response["items"]:
@@ -614,13 +612,12 @@ class BulkIndex(Runner):
             error_details.add((data["status"], None))
 
     def error_description(self, error_details):
-        error_description = ""
-        for status, reason in error_details:
-            if reason:
-                error_description += "HTTP status: %s, message: %s" % (str(status), reason)
-            else:
-                error_description += "HTTP status: %s" % str(status)
-        return error_description
+        return "".join(
+            f"HTTP status: {str(status)}, message: {reason}"
+            if reason
+            else f"HTTP status: {str(status)}"
+            for status, reason in error_details
+        )
 
     def __repr__(self, *args, **kwargs):
         return "bulk-index"
@@ -756,7 +753,7 @@ def parse(text: BytesIO, props: List[str], lists: List[str] = None) -> dict:
         # did not find all properties
         pass
 
-    parsed.update(parsed_lists)
+    parsed |= parsed_lists
     return parsed
 
 
@@ -996,7 +993,9 @@ class Query(Runner):
             components.append(doc_type)
         components.append("_search")
         path = "/".join(components)
-        return await es.transport.perform_request("GET", "/" + path, params=params, body=body, headers=headers)
+        return await es.transport.perform_request(
+            "GET", f"/{path}", params=params, body=body, headers=headers
+        )
 
     def _query_headers(self, params):
         # reduces overhead due to decompression of very large responses
@@ -1040,10 +1039,7 @@ class SearchAfterExtractor:
         response_str = response.getvalue().decode("UTF-8")
         index_of_last_sort = response_str.rfind('"sort"')
         last_sort_str = re.search(self.sort_pattern, response_str[index_of_last_sort::])
-        if last_sort_str is not None:
-            return json.loads(last_sort_str.group(1))
-        else:
-            return None
+        return json.loads(last_sort_str[1]) if last_sort_str is not None else None
 
 
 class ClusterHealth(Runner):
@@ -1445,7 +1441,7 @@ class ShrinkIndex(Runner):
             es, params={"index": idx, "retries": sys.maxsize, "request-params": {"wait_for_no_relocating_shards": "true"}}
         )
         if not result["success"]:
-            raise exceptions.RallyAssertionError("Failed to wait for [{}].".format(description))
+            raise exceptions.RallyAssertionError(f"Failed to wait for [{description}].")
 
     async def __call__(self, es, params):
         source_index = mandatory(params, "source-index", self)
@@ -1457,17 +1453,17 @@ class ShrinkIndex(Runner):
 
         # we need to inject additional settings so we better copy the body
         target_body = deepcopy(mandatory(params, "target-body", self))
-        shrink_node = params.get("shrink-node")
-        # Choose a random data node if none is specified
-        if shrink_node:
+        if shrink_node := params.get("shrink-node"):
             node_names = [shrink_node]
         else:
-            node_names = []
             # choose a random data node
             node_info = await es.nodes.info()
-            for node in node_info["nodes"].values():
-                if "data" in node["roles"]:
-                    node_names.append(node["name"])
+            node_names = [
+                node["name"]
+                for node in node_info["nodes"].values()
+                if "data" in node["roles"]
+            ]
+
             if not node_names:
                 raise exceptions.RallyAssertionError("Could not choose a suitable shrink-node automatically. Specify it explicitly.")
 
@@ -1612,16 +1608,14 @@ class StopMlDatafeed(Runner):
         try:
             await es.xpack.ml.stop_datafeed(datafeed_id=datafeed_id, force=force, timeout=timeout)
         except elasticsearch.TransportError as e:
-            # fallback to old path (ES < 7)
-            if e.status_code == 400:
-                request_params = {
-                    "force": escape(force),
-                }
-                if timeout:
-                    request_params["timeout"] = escape(timeout)
-                await es.transport.perform_request("POST", f"/_xpack/ml/datafeeds/{datafeed_id}/_stop", params=request_params)
-            else:
+            if e.status_code != 400:
                 raise e
+            request_params = {
+                "force": escape(force),
+            }
+            if timeout:
+                request_params["timeout"] = escape(timeout)
+            await es.transport.perform_request("POST", f"/_xpack/ml/datafeeds/{datafeed_id}/_stop", params=request_params)
 
     def __repr__(self, *args, **kwargs):
         return "stop-ml-datafeed"
@@ -1725,21 +1719,19 @@ class CloseMlJob(Runner):
         try:
             await es.xpack.ml.close_job(job_id=job_id, force=force, timeout=timeout)
         except elasticsearch.TransportError as e:
-            # fallback to old path (ES < 7)
-            if e.status_code == 400:
-                request_params = {
-                    "force": escape(force),
-                }
-                if timeout:
-                    request_params["timeout"] = escape(timeout)
-
-                await es.transport.perform_request(
-                    "POST",
-                    f"/_xpack/ml/anomaly_detectors/{job_id}/_close",
-                    params=request_params,
-                )
-            else:
+            if e.status_code != 400:
                 raise e
+            request_params = {
+                "force": escape(force),
+            }
+            if timeout:
+                request_params["timeout"] = escape(timeout)
+
+            await es.transport.perform_request(
+                "POST",
+                f"/_xpack/ml/anomaly_detectors/{job_id}/_close",
+                params=request_params,
+            )
 
     def __repr__(self, *args, **kwargs):
         return "close-ml-job"
@@ -2193,9 +2185,7 @@ class SubmitAsyncSearch(Runner):
 def async_search_ids(op_names):
     subjects = [op_names] if isinstance(op_names, str) else op_names
     for subject in subjects:
-        subject_id = CompositeContext.get(subject)
-        # skip empty ids, searches have already completed
-        if subject_id:
+        if subject_id := CompositeContext.get(subject):
             yield subject_id, subject
 
 
@@ -2516,21 +2506,27 @@ class Retry(Runner, Delegator):
             last_attempt = attempt + 1 == max_attempts
             try:
                 return_value = await self.delegate(es, params)
-                if last_attempt or not retry_on_error:
+                if (
+                    not last_attempt
+                    and retry_on_error
+                    and isinstance(return_value, dict)
+                    and return_value.get("success", True)
+                ):
+                    self.logger.debug("%s has returned successfully", repr(self.delegate))
                     return return_value
-                # we can determine success if and only if the runner returns a dict. Otherwise, we have to assume it was fine.
-                elif isinstance(return_value, dict):
-                    if return_value.get("success", True):
-                        self.logger.debug("%s has returned successfully", repr(self.delegate))
-                        return return_value
-                    else:
-                        self.logger.info(
-                            "[%s] has returned with an error: %s. Retrying in [%.2f] seconds.",
-                            repr(self.delegate),
-                            return_value,
-                            sleep_time,
-                        )
-                        await asyncio.sleep(sleep_time)
+                elif (
+                    not last_attempt
+                    and retry_on_error
+                    and isinstance(return_value, dict)
+                    and not return_value.get("success", True)
+                ):
+                    self.logger.info(
+                        "[%s] has returned with an error: %s. Retrying in [%.2f] seconds.",
+                        repr(self.delegate),
+                        return_value,
+                        sleep_time,
+                    )
+                    await asyncio.sleep(sleep_time)
                 else:
                     return return_value
             except (socket.timeout, elasticsearch.exceptions.ConnectionError):
@@ -2539,16 +2535,13 @@ class Retry(Runner, Delegator):
                 else:
                     await asyncio.sleep(sleep_time)
             except elasticsearch.exceptions.TransportError as e:
-                if last_attempt or not retry_on_timeout:
+                if last_attempt or not retry_on_timeout or e.status_code != 408:
                     raise e
-                elif e.status_code == 408:
-                    self.logger.info("[%s] has timed out. Retrying in [%.2f] seconds.", repr(self.delegate), sleep_time)
-                    await asyncio.sleep(sleep_time)
-                else:
-                    raise e
+                self.logger.info("[%s] has timed out. Retrying in [%.2f] seconds.", repr(self.delegate), sleep_time)
+                await asyncio.sleep(sleep_time)
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         return await self.delegate.__aexit__(exc_type, exc_val, exc_tb)
 
     def __repr__(self, *args, **kwargs):
-        return "retryable %s" % repr(self.delegate)
+        return f"retryable {repr(self.delegate)}"

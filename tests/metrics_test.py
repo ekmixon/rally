@@ -261,8 +261,8 @@ class EsClientTests(TestCase):
 
         # The sec to sleep for 10 transport errors is
         # [1, 2, 4, 8, 16, 32, 64, 128, 256, 512] ~> 17.05min in total
-        sleep_slots = [float(2 ** i) for i in range(0, max_retry)]
-        mocked_sleep_calls = [mock.call(sleep_slots[i]) for i in range(0, max_retry)]
+        sleep_slots = [float(2 ** i) for i in range(max_retry)]
+        mocked_sleep_calls = [mock.call(sleep_slots[i]) for i in range(max_retry)]
 
         for rnd_err_idx, rnd_err_code in enumerate(rnd_err_codes):
             # List of logger.debug calls to expect
@@ -1479,7 +1479,10 @@ class InMemoryMetricsStoreTests(TestCase):
         self.assertEqual(len(expected_percentiles), len(actual_percentiles))
         for percentile, actual_percentile_value in actual_percentiles.items():
             self.assertAlmostEqual(
-                expected_percentiles[percentile], actual_percentile_value, places=1, msg=str(percentile) + "th percentile differs"
+                expected_percentiles[percentile],
+                actual_percentile_value,
+                places=1,
+                msg=f"{str(percentile)}th percentile differs",
             )
 
     def test_externalize_and_bulk_add(self):
@@ -1859,10 +1862,17 @@ class StatsCalculatorTests(TestCase):
 
 
 def select(l, name, operation=None, job=None, node=None):
-    for item in l:
-        if item["name"] == name and item.get("operation") == operation and item.get("node") == node and item.get("job") == job:
-            return item
-    return None
+    return next(
+        (
+            item
+            for item in l
+            if item["name"] == name
+            and item.get("operation") == operation
+            and item.get("node") == node
+            and item.get("job") == job
+        ),
+        None,
+    )
 
 
 class GlobalStatsCalculatorTests(TestCase):

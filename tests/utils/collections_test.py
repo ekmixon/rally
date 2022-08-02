@@ -28,7 +28,7 @@ class TestMergeDicts:
         d1: Mapping[Any, Any] = {}
         d2: Mapping[Any, Any] = {}
 
-        assert dict(collections.merge_dicts(d1, d2)) == {}
+        assert not dict(collections.merge_dicts(d1, d2))
 
     @pytest.mark.parametrize("seed", range(20))
     def test_can_merge_randomized_empty_and_non_empty_dict(self, seed):
@@ -36,7 +36,7 @@ class TestMergeDicts:
 
         dct = {"params": {"car-params": {"data_paths": "/mnt/local_ssd"}}}
         d1: Mapping[Any, Any] = random.choice([{}, dct])
-        d2: Mapping[Any, Any] = dct if not d1 else {}
+        d2: Mapping[Any, Any] = {} if d1 else dct
 
         assert dict(collections.merge_dicts(d1, d2)) == dct
 

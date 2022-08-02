@@ -135,34 +135,34 @@ class RallyActor(thespian.actors.ActorTypeDispatcher):
         :param new_status: The new status once all child actors have responded.
         :param transition: A parameter-less function to call immediately after changing the status.
         """
-        if self.is_current_status_expected(expected_status):
-            self.received_responses.append(msg)
-            response_count = len(self.received_responses)
-            expected_count = len(self.children)
-
-            self.logger.debug(
-                "[%d] of [%d] child actors have responded for transition from [%s] to [%s].",
-                response_count,
-                expected_count,
-                self.status,
-                new_status,
-            )
-            if response_count == expected_count:
-                self.logger.debug(
-                    "All [%d] child actors have responded. Transitioning now from [%s] to [%s].", expected_count, self.status, new_status
-                )
-                # all nodes have responded, change status
-                self.status = new_status
-                self.received_responses = []
-                transition()
-            elif response_count > expected_count:
-                raise exceptions.RallyAssertionError(
-                    "Received [%d] responses but only [%d] were expected to transition from [%s] to [%s]. The responses are: %s"
-                    % (response_count, expected_count, self.status, new_status, self.received_responses)
-                )
-        else:
+        if not self.is_current_status_expected(expected_status):
             raise exceptions.RallyAssertionError(
-                "Received [%s] from [%s] but we are in status [%s] instead of [%s]." % (type(msg), sender, self.status, expected_status)
+                f"Received [{type(msg)}] from [{sender}] but we are in status [{self.status}] instead of [{expected_status}]."
+            )
+
+        self.received_responses.append(msg)
+        response_count = len(self.received_responses)
+        expected_count = len(self.children)
+
+        self.logger.debug(
+            "[%d] of [%d] child actors have responded for transition from [%s] to [%s].",
+            response_count,
+            expected_count,
+            self.status,
+            new_status,
+        )
+        if response_count == expected_count:
+            self.logger.debug(
+                "All [%d] child actors have responded. Transitioning now from [%s] to [%s].", expected_count, self.status, new_status
+            )
+            # all nodes have responded, change status
+            self.status = new_status
+            self.received_responses = []
+            transition()
+        elif response_count > expected_count:
+            raise exceptions.RallyAssertionError(
+                "Received [%d] responses but only [%d] were expected to transition from [%s] to [%s]. The responses are: %s"
+                % (response_count, expected_count, self.status, new_status, self.received_responses)
             )
 
     def send_to_children_and_transition(self, sender, msg, expected_status, new_status):
@@ -175,15 +175,15 @@ class RallyActor(thespian.actors.ActorTypeDispatcher):
         :param expected_status: The status in which this actor should be upon calling this method.
         :param new_status: The new status.
         """
-        if self.is_current_status_expected(expected_status):
-            self.logger.info("Transitioning from [%s] to [%s].", self.status, new_status)
-            self.status = new_status
-            for m in filter(None, self.children):
-                self.send(m, msg)
-        else:
+        if not self.is_current_status_expected(expected_status):
             raise exceptions.RallyAssertionError(
-                "Received [%s] from [%s] but we are in status [%s] instead of [%s]." % (type(msg), sender, self.status, expected_status)
+                f"Received [{type(msg)}] from [{sender}] but we are in status [{self.status}] instead of [{expected_status}]."
             )
+
+        self.logger.info("Transitioning from [%s] to [%s].", self.status, new_status)
+        self.status = new_status
+        for m in filter(None, self.children):
+            self.send(m, msg)
 
     def is_current_status_expected(self, expected_status):
         # if we don't expect anything, we're always in the right status
@@ -241,7 +241,10 @@ def bootstrap_actor_system(try_join=False, prefer_local_only=False, local_ip=Non
                 local_ip = None
         else:
             if system_base not in ("multiprocTCPBase", "multiprocUDPBase"):
-                raise exceptions.SystemSetupError("Rally requires a network-capable system base but got [%s]." % system_base)
+                raise exceptions.SystemSetupError(
+                    f"Rally requires a network-capable system base but got [{system_base}]."
+                )
+
             if not coordinator_ip:
                 raise exceptions.SystemSetupError("coordinator IP is required")
             if not local_ip:
@@ -258,7 +261,7 @@ def bootstrap_actor_system(try_join=False, prefer_local_only=False, local_ip=Non
             capabilities["ip"] = local_ip
         if coordinator_ip:
             # Make the coordinator node the convention leader
-            capabilities["Convention Address.IPv4"] = "%s:1900" % coordinator_ip
+            capabilities["Convention Address.IPv4"] = f"{coordinator_ip}:1900"
         logger.info("Starting actor system with system base [%s] and capabilities [%s].", system_base, capabilities)
         return thespian.actors.ActorSystem(system_base, logDefs=log.load_configuration(), capabilities=capabilities)
     except thespian.actors.ActorSystemException:

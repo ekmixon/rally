@@ -37,9 +37,8 @@ class StaticBulkReader:
         return self
 
     def __next__(self):
-        batch = []
         bulk = next(self.bulks)
-        batch.append((len(bulk), bulk))
+        batch = [(len(bulk), bulk)]
         return self.index_name, self.type_name, batch
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -486,9 +485,7 @@ class IndexDataReaderTests(TestCase):
         bulks = []
         with reader:
             for _, _, batch in reader:
-                for bulk_size, bulk in batch:
-                    bulks.append(bulk)
-
+                bulks.extend(bulk for bulk_size, bulk in batch)
         self.assertEqual(
             [
                 b'{"index": {"_index": "test_index", "_type": "test_type", "_id": "100"}}\n'
@@ -525,9 +522,7 @@ class IndexDataReaderTests(TestCase):
         bulks = []
         with reader:
             for _, _, batch in reader:
-                for bulk_size, bulk in batch:
-                    bulks.append(bulk)
-
+                bulks.extend(bulk for bulk_size, bulk in batch)
         self.assertEqual(
             [
                 b'{"index": {"_index": "test_index", "_type": "test_type", "_id": "100"}}\n'

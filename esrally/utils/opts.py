@@ -86,11 +86,11 @@ def to_dict(arg, default_parser=kv_to_map):
 
 
 def bulleted_list_of(src_list):
-    return ["- {}".format(param) for param in src_list]
+    return [f"- {param}" for param in src_list]
 
 
 def double_quoted_list_of(src_list):
-    return ['"{}"'.format(param) for param in src_list]
+    return [f'"{param}"' for param in src_list]
 
 
 def make_list_of_close_matches(word_list, all_possibilities):
@@ -104,8 +104,9 @@ def make_list_of_close_matches(word_list, all_possibilities):
     """
     close_matches = []
     for param in word_list:
-        matched_word = difflib.get_close_matches(param, all_possibilities, n=1)
-        if matched_word:
+        if matched_word := difflib.get_close_matches(
+            param, all_possibilities, n=1
+        ):
             close_matches.append(matched_word[0])
 
     return close_matches

@@ -218,7 +218,11 @@ class FlightRecorder(TelemetryDevice):
 
             time.sleep(3)
 
-        console.info("%s: Writing flight recording to [%s]" % (self.human_name, log_file), logger=self.logger)
+        console.info(
+            f"{self.human_name}: Writing flight recording to [{log_file}]",
+            logger=self.logger,
+        )
+
 
         java_opts = self.java_opts(log_file)
 
@@ -233,21 +237,22 @@ class FlightRecorder(TelemetryDevice):
             java_opts.append("-XX:+UnlockCommercialFeatures")
 
         if self.java_major_version < 9:
-            java_opts.append("-XX:+FlightRecorder")
-            java_opts.append("-XX:FlightRecorderOptions=disk=true,maxage=0s,maxsize=0,dumponexit=true,dumponexitpath={}".format(log_file))
+            java_opts.extend(
+                (
+                    "-XX:+FlightRecorder",
+                    f"-XX:FlightRecorderOptions=disk=true,maxage=0s,maxsize=0,dumponexit=true,dumponexitpath={log_file}",
+                )
+            )
+
             jfr_cmd = "-XX:StartFlightRecording=defaultrecording=true"
-            if recording_template:
-                self.logger.info("jfr: Using recording template [%s].", recording_template)
-                jfr_cmd += ",settings={}".format(recording_template)
-            else:
-                self.logger.info("jfr: Using default recording template.")
         else:
-            jfr_cmd += "-XX:StartFlightRecording=maxsize=0,maxage=0s,disk=true,dumponexit=true,filename={}".format(log_file)
-            if recording_template:
-                self.logger.info("jfr: Using recording template [%s].", recording_template)
-                jfr_cmd += ",settings={}".format(recording_template)
-            else:
-                self.logger.info("jfr: Using default recording template.")
+            jfr_cmd += f"-XX:StartFlightRecording=maxsize=0,maxage=0s,disk=true,dumponexit=true,filename={log_file}"
+
+        if recording_template:
+            self.logger.info("jfr: Using recording template [%s].", recording_template)
+            jfr_cmd += f",settings={recording_template}"
+        else:
+            self.logger.info("jfr: Using default recording template.")
         java_opts.append(jfr_cmd)
         return java_opts
 
@@ -265,12 +270,16 @@ class JitCompiler(TelemetryDevice):
     def instrument_java_opts(self):
         io.ensure_dir(self.log_root)
         log_file = os.path.join(self.log_root, "jit.log")
-        console.info("%s: Writing JIT compiler log to [%s]" % (self.human_name, log_file), logger=self.logger)
+        console.info(
+            f"{self.human_name}: Writing JIT compiler log to [{log_file}]",
+            logger=self.logger,
+        )
+
         return [
             "-XX:+UnlockDiagnosticVMOptions",
             "-XX:+TraceClassLoading",
             "-XX:+LogCompilation",
-            "-XX:LogFile={}".format(log_file),
+            f"-XX:LogFile={log_file}",
             "-XX:+PrintAssembly",
         ]
 
@@ -290,13 +299,17 @@ class Gc(TelemetryDevice):
     def instrument_java_opts(self):
         io.ensure_dir(self.log_root)
         log_file = os.path.join(self.log_root, "gc.log")
-        console.info("%s: Writing GC log to [%s]" % (self.human_name, log_file), logger=self.logger)
+        console.info(
+            f"{self.human_name}: Writing GC log to [{log_file}]",
+            logger=self.logger,
+        )
+
         return self.java_opts(log_file)
 
     def java_opts(self, log_file):
         if self.java_major_version < 9:
             return [
-                "-Xloggc:{}".format(log_file),
+                f"-Xloggc:{log_file}",
                 "-XX:+PrintGCDetails",
                 "-XX:+PrintGCDateStamps",
                 "-XX:+PrintGCTimeStamps",
@@ -304,10 +317,10 @@ class Gc(TelemetryDevice):
                 "-XX:+PrintGCApplicationConcurrentTime",
                 "-XX:+PrintTenuringDistribution",
             ]
-        else:
-            log_config = self.telemetry_params.get("gc-log-config", "gc*=info,safepoint=info,age*=trace")
-            # see https://docs.oracle.com/javase/9/tools/java.htm#JSWOR-GUID-BE93ABDC-999C-4CB5-A88B-1994AAAC74D5
-            return [f"-Xlog:{log_config}:file={log_file}:utctime,uptimemillis,level,tags:filecount=0"]
+
+        log_config = self.telemetry_params.get("gc-log-config", "gc*=info,safepoint=info,age*=trace")
+        # see https://docs.oracle.com/javase/9/tools/java.htm#JSWOR-GUID-BE93ABDC-999C-4CB5-A88B-1994AAAC74D5
+        return [f"-Xlog:{log_config}:file={log_file}:utctime,uptimemillis,level,tags:filecount=0"]
 
 
 class Heapdump(TelemetryDevice):
@@ -322,9 +335,13 @@ class Heapdump(TelemetryDevice):
 
     def detach_from_node(self, node, running):
         if running:
-            heap_dump_file = os.path.join(self.log_root, "heap_at_exit_{}.hprof".format(node.pid))
-            console.info("{}: Writing heap dump to [{}]".format(self.human_name, heap_dump_file), logger=self.logger)
-            cmd = "jmap -dump:format=b,file={} {}".format(heap_dump_file, node.pid)
+            heap_dump_file = os.path.join(self.log_root, f"heap_at_exit_{node.pid}.hprof")
+            console.info(
+                f"{self.human_name}: Writing heap dump to [{heap_dump_file}]",
+                logger=self.logger,
+            )
+
+            cmd = f"jmap -dump:format=b,file={heap_dump_file} {node.pid}"
             if process.run_subprocess_with_logging(cmd):
                 self.logger.warning("Could not write heap dump to [%s]", heap_dump_file)
 
@@ -381,18 +398,18 @@ class CcrStats(TelemetryDevice):
         self.sample_interval = telemetry_params.get("ccr-stats-sample-interval", 1)
         if self.sample_interval <= 0:
             raise exceptions.SystemSetupError(
-                "The telemetry parameter 'ccr-stats-sample-interval' must be greater than zero but was {}.".format(self.sample_interval)
+                f"The telemetry parameter 'ccr-stats-sample-interval' must be greater than zero but was {self.sample_interval}."
             )
+
         self.specified_cluster_names = self.clients.keys()
         self.indices_per_cluster = self.telemetry_params.get("ccr-stats-indices", False)
         if self.indices_per_cluster:
             for cluster_name in self.indices_per_cluster.keys():
                 if cluster_name not in clients:
                     raise exceptions.SystemSetupError(
-                        "The telemetry parameter 'ccr-stats-indices' must be a JSON Object with keys matching "
-                        "the cluster names [{}] specified in --target-hosts "
-                        "but it had [{}].".format(",".join(sorted(clients.keys())), cluster_name)
+                        f"""The telemetry parameter 'ccr-stats-indices' must be a JSON Object with keys matching the cluster names [{",".join(sorted(clients.keys()))}] specified in --target-hosts but it had [{cluster_name}]."""
                     )
+
             self.specified_cluster_names = self.indices_per_cluster.keys()
 
         self.metrics_store = metrics_store
@@ -461,9 +478,8 @@ class CcrStatsRecorder:
                 "GET", ccr_stats_api_endpoint, params={"human": "false", "filter_path": filter_path}
             )
         except elasticsearch.TransportError:
-            msg = "A transport error occurred while collecting CCR stats from the endpoint [{}?filter_path={}] on cluster [{}]".format(
-                ccr_stats_api_endpoint, filter_path, self.cluster_name
-            )
+            msg = f"A transport error occurred while collecting CCR stats from the endpoint [{ccr_stats_api_endpoint}?filter_path={filter_path}] on cluster [{self.cluster_name}]"
+
             self.logger.exception(msg)
             raise exceptions.RallyError(msg)
 
@@ -527,10 +543,9 @@ class RecoveryStats(TelemetryDevice):
         self.sample_interval = telemetry_params.get("recovery-stats-sample-interval", 1)
         if self.sample_interval <= 0:
             raise exceptions.SystemSetupError(
-                "The telemetry parameter 'recovery-stats-sample-interval' must be greater than zero but was {}.".format(
-                    self.sample_interval
-                )
+                f"The telemetry parameter 'recovery-stats-sample-interval' must be greater than zero but was {self.sample_interval}."
             )
+
         self.specified_cluster_names = self.clients.keys()
         indices_per_cluster = self.telemetry_params.get("recovery-stats-indices", False)
         # allow the user to specify either an index pattern as string or as a JSON object
@@ -543,10 +558,9 @@ class RecoveryStats(TelemetryDevice):
             for cluster_name in self.indices_per_cluster.keys():
                 if cluster_name not in clients:
                     raise exceptions.SystemSetupError(
-                        "The telemetry parameter 'recovery-stats-indices' must be a JSON Object with keys matching "
-                        "the cluster names [{}] specified in --target-hosts "
-                        "but it had [{}].".format(",".join(sorted(clients.keys())), cluster_name)
+                        f"""The telemetry parameter 'recovery-stats-indices' must be a JSON Object with keys matching the cluster names [{",".join(sorted(clients.keys()))}] specified in --target-hosts but it had [{cluster_name}]."""
                     )
+
             self.specified_cluster_names = self.indices_per_cluster.keys()
 
         self.metrics_store = metrics_store
@@ -607,7 +621,8 @@ class RecoveryStatsRecorder:
         try:
             stats = self.client.indices.recovery(index=self.indices, active_only=True, detailed=False)
         except elasticsearch.TransportError:
-            msg = "A transport error occurred while collecting recovery stats on cluster [{}]".format(self.cluster_name)
+            msg = f"A transport error occurred while collecting recovery stats on cluster [{self.cluster_name}]"
+
             self.logger.exception(msg)
             raise exceptions.RallyError(msg)
 
@@ -771,8 +786,9 @@ class NodeStatsRecorder:
         self.sample_interval = telemetry_params.get("node-stats-sample-interval", 1)
         if self.sample_interval <= 0:
             raise exceptions.SystemSetupError(
-                "The telemetry parameter 'node-stats-sample-interval' must be greater than zero but was {}.".format(self.sample_interval)
+                f"The telemetry parameter 'node-stats-sample-interval' must be greater than zero but was {self.sample_interval}."
             )
+
 
         self.include_indices = telemetry_params.get("node-stats-include-indices", False)
         self.include_indices_metrics = telemetry_params.get("node-stats-include-indices-metrics", False)
@@ -783,10 +799,9 @@ class NodeStatsRecorder:
             else:
                 # we don't validate the allowable metrics as they may change across ES versions
                 raise exceptions.SystemSetupError(
-                    "The telemetry parameter 'node-stats-include-indices-metrics' must be a comma-separated string but was {}".format(
-                        type(self.include_indices_metrics)
-                    )
+                    f"The telemetry parameter 'node-stats-include-indices-metrics' must be a comma-separated string but was {type(self.include_indices_metrics)}"
                 )
+
         else:
             self.include_indices_metrics_list = [
                 "docs",
@@ -862,22 +877,28 @@ class NodeStatsRecorder:
                     new_prefix = "{}_{}".format(prefix, section_name)
                     # https://www.python.org/dev/peps/pep-0380/
                     yield from self.flatten_stats_fields(prefix=new_prefix, stats=section_value).items()
-                # Avoid duplication for metric fields that have unit embedded in value as they are also recorded elsewhere
-                # example: `breakers_parent_limit_size_in_bytes` vs `breakers_parent_limit_size`
                 elif isinstance(section_value, (int, float)) and not isinstance(section_value, bool):
-                    yield "{}{}".format(prefix + "_" if prefix else "", section_name), section_value
+                    yield (
+                        "{}{}".format(
+                            f"{prefix}_" if prefix else "", section_name
+                        ),
+                        section_value,
+                    )
 
-        if stats:
-            return dict(iterate())
-        else:
-            return dict()
+
+        return dict(iterate()) if stats else {}
 
     def indices_stats(self, node_name, node_stats, include):
         idx_stats = node_stats["indices"]
         ordered_results = collections.OrderedDict()
         for section in include:
             if section in idx_stats:
-                ordered_results.update(self.flatten_stats_fields(prefix="indices_" + section, stats=idx_stats[section]))
+                ordered_results.update(
+                    self.flatten_stats_fields(
+                        prefix=f"indices_{section}", stats=idx_stats[section]
+                    )
+                )
+
 
         return ordered_results
 
@@ -1057,33 +1078,75 @@ class TransformStatsRecorder:
         meta_data = {"transform_id": transform_id}
 
         self.metrics_store.put_value_cluster_level(
-            prefix + "transform_pages_processed", stats.get("pages_processed", 0), meta_data=meta_data
-        )
-        self.metrics_store.put_value_cluster_level(
-            prefix + "transform_documents_processed", stats.get("documents_processed", 0), meta_data=meta_data
-        )
-        self.metrics_store.put_value_cluster_level(
-            prefix + "transform_documents_indexed", stats.get("documents_indexed", 0), meta_data=meta_data
-        )
-        self.metrics_store.put_value_cluster_level(prefix + "transform_index_total", stats.get("index_total", 0), meta_data=meta_data)
-        self.metrics_store.put_value_cluster_level(prefix + "transform_index_failures", stats.get("index_failures", 0), meta_data=meta_data)
-        self.metrics_store.put_value_cluster_level(prefix + "transform_search_total", stats.get("search_total", 0), meta_data=meta_data)
-        self.metrics_store.put_value_cluster_level(
-            prefix + "transform_search_failures", stats.get("search_failures", 0), meta_data=meta_data
-        )
-        self.metrics_store.put_value_cluster_level(
-            prefix + "transform_processing_total", stats.get("processing_total", 0), meta_data=meta_data
+            f"{prefix}transform_pages_processed",
+            stats.get("pages_processed", 0),
+            meta_data=meta_data,
         )
 
         self.metrics_store.put_value_cluster_level(
-            prefix + "transform_search_time", stats.get("search_time_in_ms", 0), "ms", meta_data=meta_data
+            f"{prefix}transform_documents_processed",
+            stats.get("documents_processed", 0),
+            meta_data=meta_data,
         )
+
         self.metrics_store.put_value_cluster_level(
-            prefix + "transform_index_time", stats.get("index_time_in_ms", 0), "ms", meta_data=meta_data
+            f"{prefix}transform_documents_indexed",
+            stats.get("documents_indexed", 0),
+            meta_data=meta_data,
         )
+
         self.metrics_store.put_value_cluster_level(
-            prefix + "transform_processing_time", stats.get("processing_time_in_ms", 0), "ms", meta_data=meta_data
+            f"{prefix}transform_index_total",
+            stats.get("index_total", 0),
+            meta_data=meta_data,
         )
+
+        self.metrics_store.put_value_cluster_level(
+            f"{prefix}transform_index_failures",
+            stats.get("index_failures", 0),
+            meta_data=meta_data,
+        )
+
+        self.metrics_store.put_value_cluster_level(
+            f"{prefix}transform_search_total",
+            stats.get("search_total", 0),
+            meta_data=meta_data,
+        )
+
+        self.metrics_store.put_value_cluster_level(
+            f"{prefix}transform_search_failures",
+            stats.get("search_failures", 0),
+            meta_data=meta_data,
+        )
+
+        self.metrics_store.put_value_cluster_level(
+            f"{prefix}transform_processing_total",
+            stats.get("processing_total", 0),
+            meta_data=meta_data,
+        )
+
+
+        self.metrics_store.put_value_cluster_level(
+            f"{prefix}transform_search_time",
+            stats.get("search_time_in_ms", 0),
+            "ms",
+            meta_data=meta_data,
+        )
+
+        self.metrics_store.put_value_cluster_level(
+            f"{prefix}transform_index_time",
+            stats.get("index_time_in_ms", 0),
+            "ms",
+            meta_data=meta_data,
+        )
+
+        self.metrics_store.put_value_cluster_level(
+            f"{prefix}transform_processing_time",
+            stats.get("processing_time_in_ms", 0),
+            "ms",
+            meta_data=meta_data,
+        )
+
 
         documents_processed = stats.get("documents_processed", 0)
         processing_time = stats.get("search_time_in_ms", 0)
@@ -1092,7 +1155,12 @@ class TransformStatsRecorder:
 
         if processing_time > 0:
             throughput = documents_processed / processing_time * 1000
-            self.metrics_store.put_value_cluster_level(prefix + "transform_throughput", throughput, "docs/s", meta_data=meta_data)
+            self.metrics_store.put_value_cluster_level(
+                f"{prefix}transform_throughput",
+                throughput,
+                "docs/s",
+                meta_data=meta_data,
+            )
 
 
 class SearchableSnapshotsStats(TelemetryDevice):
@@ -1280,10 +1348,7 @@ class SearchableSnapshotsStatsRecorder:
         :param idx: String that may include shell style wildcards (https://docs.python.org/3/library/fnmatch.html)
         :return: Boolean if idx matches anything from self.indices
         """
-        for index_param in self.indices:
-            if fnmatch.fnmatch(idx, index_param):
-                return True
-        return False
+        return any(fnmatch.fnmatch(idx, index_param) for index_param in self.indices)
 
 
 class DataStreamStats(TelemetryDevice):
@@ -1436,8 +1501,7 @@ class DiskIo(InternalTelemetryDevice):
 
     def attach_to_node(self, node):
         es_process = sysstats.setup_process_stats(node.pid)
-        process_start = sysstats.process_io_counters(es_process)
-        if process_start:
+        if process_start := sysstats.process_io_counters(es_process):
             self.read_bytes = process_start.read_bytes
             self.write_bytes = process_start.write_bytes
             self.logger.info("Using more accurate process-based I/O counters.")
@@ -1460,9 +1524,7 @@ class DiskIo(InternalTelemetryDevice):
             # noinspection PyBroadException
             try:
                 es_process = sysstats.setup_process_stats(node.pid)
-                process_end = sysstats.process_io_counters(es_process)
-                # we have process-based disk counters, no need to worry how many nodes are on this host
-                if process_end:
+                if process_end := sysstats.process_io_counters(es_process):
                     self.read_bytes = process_end.read_bytes - self.read_bytes
                     self.write_bytes = process_end.write_bytes - self.write_bytes
                 else:
@@ -1478,7 +1540,6 @@ class DiskIo(InternalTelemetryDevice):
 
                     self.read_bytes = (disk_end.read_bytes - self.read_bytes) // self.node_count_on_host
                     self.write_bytes = (disk_end.write_bytes - self.write_bytes) // self.node_count_on_host
-            # Catching RuntimeException is not sufficient: psutil might raise AccessDenied (derived from Exception)
             except BaseException:
                 self.logger.exception("Could not determine I/O stats at benchmark end.")
                 # reset all counters so we don't attempt to write inconsistent numbers to the metrics store later on
@@ -1498,7 +1559,7 @@ def store_node_attribute_metadata(metrics_store, nodes_info):
     for node in nodes_info:
         if "attributes" in node:
             for k, v in node["attributes"].items():
-                attribute_key = "attribute_%s" % str(k)
+                attribute_key = f"attribute_{str(k)}"
                 metrics_store.add_meta_info(metrics.MetaInfoScope.node, node["name"], attribute_key, v)
                 if attribute_key not in pseudo_cluster_attributes:
                     pseudo_cluster_attributes[attribute_key] = set()
@@ -1734,16 +1795,16 @@ class IndexStats(InternalTelemetryDevice):
         self.first_time = True
 
     def on_benchmark_start(self):
-        # we only determine this value at the start of the benchmark. This is actually only useful for
-        # the pipeline "benchmark-only" where we don't have control over the cluster and the user might not have restarted
-        # the cluster so we can at least tell them.
-        # Adding a small threshold for the warning to allow for indexing of internal indices
-        threshold = 2000
         if self.first_time:
+            # we only determine this value at the start of the benchmark. This is actually only useful for
+            # the pipeline "benchmark-only" where we don't have control over the cluster and the user might not have restarted
+            # the cluster so we can at least tell them.
+            # Adding a small threshold for the warning to allow for indexing of internal indices
+            threshold = 2000
             for t in self.index_times(self.index_stats(), per_shard_stats=False):
                 n = t["name"]
                 v = t["value"]
-                if t["value"] > threshold:
+                if v > threshold:
                     console.warn(
                         "%s is %d ms indicating that the cluster is not in a defined clean state. Recorded index time "
                         "metrics may be misleading." % (n, v),
@@ -1829,9 +1890,12 @@ class IndexStats(InternalTelemetryDevice):
         try:
             for shards in stats["indices"].values():
                 for shard in shards["shards"].values():
-                    for shard_metrics in shard:
-                        if shard_metrics["routing"]["primary"]:
-                            shard_stats.append(self.extract_value(shard_metrics, path, default_value=0))
+                    shard_stats.extend(
+                        self.extract_value(shard_metrics, path, default_value=0)
+                        for shard_metrics in shard
+                        if shard_metrics["routing"]["primary"]
+                    )
+
         except KeyError:
             self.logger.warning("Could not determine primary shard stats at path [%s].", ",".join(path))
         return shard_stats
@@ -1938,9 +2002,7 @@ class IndexSize(InternalTelemetryDevice):
         # we need to gather the file size after the node has terminated so we can be sure that it has written all its buffers.
         if not running and self.attached and self.data_paths:
             self.attached = False
-            index_size_bytes = 0
-            for data_path in self.data_paths:
-                index_size_bytes += io.get_size(data_path)
+            index_size_bytes = sum(io.get_size(data_path) for data_path in self.data_paths)
             self.index_size_bytes = index_size_bytes
 
     def store_system_metrics(self, node, metrics_store):

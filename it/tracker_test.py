@@ -76,7 +76,7 @@ def test_create_track(cfg, tmp_path, test_cluster):
         assert full_path.exists(), f"Expected file to exist at path [{full_path}]"
 
     with open(track_path / f"{base_generated_corpora}-1k.json", "rt") as f:
-        num_lines = sum(1 for line in f)
+        num_lines = sum(1 for _ in f)
     assert (
         num_lines == 1000
     ), f"Corpora [{base_generated_corpora}-1k.json] used by test-mode is [{num_lines}] lines but should be 1000 lines"

@@ -133,7 +133,10 @@ def is_simple_scheduler(scheduler_class):
     """
     methods = inspect.getmembers(scheduler_class, inspect.isfunction)
     method_names = [name for name, _ in methods]
-    return not all(scheduler_method in method_names for scheduler_method in ["before_request", "after_request", "next"])
+    return any(
+        scheduler_method not in method_names
+        for scheduler_method in ["before_request", "after_request", "next"]
+    )
 
 
 def register_scheduler(name, scheduler):
@@ -146,7 +149,10 @@ def register_scheduler(name, scheduler):
     """
     logger = logging.getLogger(__name__)
     if name in __SCHEDULERS:
-        raise exceptions.SystemSetupError("A scheduler with the name [%s] is already registered." % name)
+        raise exceptions.SystemSetupError(
+            f"A scheduler with the name [{name}] is already registered."
+        )
+
     # we'd rather use callable() but this will erroneously also classify a class as callable...
     if isinstance(scheduler, types.FunctionType):
         logger.warning("Function-based schedulers are deprecated. Please reimplement [%s] as a class.", str(scheduler))
@@ -284,35 +290,32 @@ class UnitAwareScheduler(Scheduler):
         self.scheduler = Unthrottled()
 
     def after_request(self, now, weight, unit, request_meta_data):
-        if weight > 0 and (self.first_request or self.current_weight != weight):
-            expected_unit = self.task.target_throughput.unit
-            actual_unit = f"{unit}/s"
-            if actual_unit != expected_unit:
-                # *temporary* workaround to convert mismatching units to ops/s to stay backwards-compatible.
-                #
-                # This ensures that we throttle based on ops/s but report based on the original unit (as before).
-                if expected_unit == "ops/s":
-                    weight = 1
-                    if self.first_request:
-                        logging.getLogger(__name__).warning(
-                            "Task [%s] throttles based on [%s] but reports [%s]. Please specify the target throughput in [%s] instead.",
-                            self.task,
-                            expected_unit,
-                            actual_unit,
-                            actual_unit,
-                        )
-                else:
-                    raise exceptions.RallyAssertionError(
-                        f"Target throughput for [{self.task}] is specified in "
-                        f"[{expected_unit}] but the task throughput is measured "
-                        f"in [{actual_unit}]."
-                    )
+        if weight <= 0 or not self.first_request and self.current_weight == weight:
+            return
+        expected_unit = self.task.target_throughput.unit
+        actual_unit = f"{unit}/s"
+        if actual_unit != expected_unit:
+            if expected_unit != "ops/s":
+                raise exceptions.RallyAssertionError(
+                    f"Target throughput for [{self.task}] is specified in "
+                    f"[{expected_unit}] but the task throughput is measured "
+                    f"in [{actual_unit}]."
+                )
 
-            self.first_request = False
-            self.current_weight = weight
-            # throughput in requests/s for this client
-            target_throughput = self.task.target_throughput.value / self.task.clients / self.current_weight
-            self.scheduler = self.scheduler_class(self.task, target_throughput)
+            weight = 1
+            if self.first_request:
+                logging.getLogger(__name__).warning(
+                    "Task [%s] throttles based on [%s] but reports [%s]. Please specify the target throughput in [%s] instead.",
+                    self.task,
+                    expected_unit,
+                    actual_unit,
+                    actual_unit,
+                )
+        self.first_request = False
+        self.current_weight = weight
+        # throughput in requests/s for this client
+        target_throughput = self.task.target_throughput.value / self.task.clients / self.current_weight
+        self.scheduler = self.scheduler_class(self.task, target_throughput)
 
     def next(self, current):
         return self.scheduler.next(current)

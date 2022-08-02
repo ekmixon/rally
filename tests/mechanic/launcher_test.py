@@ -164,20 +164,19 @@ class ProcessLauncherTests(TestCase):
         ms = get_metrics_store(cfg)
         proc_launcher = launcher.ProcessLauncher(cfg)
 
-        node_configs = []
-        for node in range(2):
-            node_configs.append(
-                NodeConfiguration(
-                    build_type="tar",
-                    car_runtime_jdks="12,11",
-                    car_provides_bundled_jdk=True,
-                    ip="127.0.0.1",
-                    node_name="testnode-{}".format(node),
-                    node_root_path="/tmp",
-                    binary_path="/tmp",
-                    data_paths="/tmp",
-                )
+        node_configs = [
+            NodeConfiguration(
+                build_type="tar",
+                car_runtime_jdks="12,11",
+                car_provides_bundled_jdk=True,
+                ip="127.0.0.1",
+                node_name=f"testnode-{node}",
+                node_root_path="/tmp",
+                binary_path="/tmp",
+                data_paths="/tmp",
             )
+            for node in range(2)
+        ]
 
         nodes = proc_launcher.start(node_configs)
         self.assertEqual(len(nodes), 2)
@@ -216,7 +215,10 @@ class ProcessLauncherTests(TestCase):
         t = telemetry.Telemetry(["jfr"], devices=node_telemetry)
         env = proc_launcher._prepare_env(node_name="node0", java_home="/java_home", t=t)
 
-        self.assertEqual("/java_home/bin" + os.pathsep + os.environ["PATH"], env["PATH"])
+        self.assertEqual(
+            f"/java_home/bin{os.pathsep}" + os.environ["PATH"], env["PATH"]
+        )
+
         self.assertEqual(
             "-XX:+ExitOnOutOfMemoryError -XX:+UnlockDiagnosticVMOptions -XX:+DebugNonSafepoints "
             "-XX:+UnlockCommercialFeatures -XX:+FlightRecorder "
@@ -325,11 +327,10 @@ class IterationBasedStopWatch:
         self.iterations = 0
 
     def split_time(self):
-        if self.iterations < self.max_iterations:
-            self.iterations += 1
-            return 0
-        else:
+        if self.iterations >= self.max_iterations:
             return sys.maxsize
+        self.iterations += 1
+        return 0
 
 
 class TestClock:

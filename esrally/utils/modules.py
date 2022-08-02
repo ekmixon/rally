@@ -54,12 +54,11 @@ class ComponentLoader:
                 name, ext = os.path.splitext(filename)
                 if ext.endswith(".py"):
                     root_relative_path = os.path.join(path, name)[len(self.root_path) + len(os.path.sep) :]
-                    module_name = "%s.%s" % (component_name, root_relative_path.replace(os.path.sep, "."))
-                    yield module_name
+                    yield f'{component_name}.{root_relative_path.replace(os.path.sep, ".")}'
 
     def _load_component(self, component_name, module_dirs):
         # precondition: A module with this name has to exist provided that the caller has called #can_load() before.
-        root_module_name = "%s.%s" % (component_name, self.component_entry_point)
+        root_module_name = f"{component_name}.{self.component_entry_point}"
 
         for p in self._modules(module_dirs, component_name):
             self.logger.debug("Loading module [%s]", p)
@@ -72,7 +71,9 @@ class ComponentLoader:
         """
         :return: True iff the component entry point could be found.
         """
-        return self.root_path and os.path.exists(os.path.join(self.root_path, "%s.py" % self.component_entry_point))
+        return self.root_path and os.path.exists(
+            os.path.join(self.root_path, f"{self.component_entry_point}.py")
+        )
 
     def load(self):
         """
@@ -104,9 +105,8 @@ class ComponentLoader:
         # needs to be at the beginning of the system path, otherwise import machinery tries to load application-internal modules
         sys.path.insert(0, component_root_path)
         try:
-            root_module = self._load_component(component_name, module_dirs)
-            return root_module
+            return self._load_component(component_name, module_dirs)
         except BaseException:
-            msg = "Could not load component [{}]".format(component_name)
+            msg = f"Could not load component [{component_name}]"
             self.logger.exception(msg)
             raise exceptions.SystemSetupError(msg)

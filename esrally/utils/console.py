@@ -171,9 +171,11 @@ def error(msg, end="\n", flush=False, force=False, logger=None, overline=None, u
 
 
 def println(msg, console_prefix=None, end="\n", flush=False, force=False, logger=None, overline=None, underline=None):
-    allow_print = force or (not QUIET and (RALLY_RUNNING_IN_DOCKER or ASSUME_TTY or sys.stdout.isatty()))
-    if allow_print:
-        complete_msg = "%s %s" % (console_prefix, msg) if console_prefix else msg
+    if allow_print := force or (
+        not QUIET
+        and (RALLY_RUNNING_IN_DOCKER or ASSUME_TTY or sys.stdout.isatty())
+    ):
+        complete_msg = f"{console_prefix} {msg}" if console_prefix else msg
         if overline:
             print(format.underline_for(complete_msg, underline_symbol=overline), flush=flush)
         print(complete_msg, end=end, flush=flush)
@@ -231,7 +233,7 @@ class CmdLineProgressReporter:
         if len(text) <= max_length:
             return text
         else:
-            return "%s%s" % (text[0 : max_length - len(omission) - 5], omission)
+            return f"{text[:max_length - len(omission) - 5]}{omission}"
 
     def finish(self):
         if QUIET or (not RALLY_RUNNING_IN_DOCKER and not ASSUME_TTY and not sys.stdout.isatty()):

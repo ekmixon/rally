@@ -301,7 +301,9 @@ def decompress(zip_name, target_directory):
     elif extension in [".tar", ".tar.gz", ".tgz", ".tar.bz2"]:
         _do_decompress(target_directory, tarfile.open(zip_name))
     else:
-        raise RuntimeError("Unsupported file extension [%s]. Cannot decompress [%s]" % (extension, zip_name))
+        raise RuntimeError(
+            f"Unsupported file extension [{extension}]. Cannot decompress [{zip_name}]"
+        )
 
 
 def _do_decompress_manually(target_directory, filename, decompressor_args, decompressor_lib):
@@ -347,7 +349,10 @@ def _do_decompress(target_directory, compressed_file):
     try:
         compressed_file.extractall(path=target_directory)
     except BaseException:
-        raise RuntimeError("Could not decompress provided archive [%s]" % compressed_file.filename)
+        raise RuntimeError(
+            f"Could not decompress provided archive [{compressed_file.filename}]"
+        )
+
     finally:
         compressed_file.close()
 
@@ -392,9 +397,9 @@ def escape_path(path):
 
 def splitext(file_name):
     if file_name.endswith(".tar.gz"):
-        return file_name[0:-7], file_name[-7:]
+        return file_name[:-7], file_name[-7:]
     elif file_name.endswith(".tar.bz2"):
-        return file_name[0:-8], file_name[-8:]
+        return file_name[:-8], file_name[-8:]
     else:
         return os.path.splitext(file_name)
 
@@ -524,22 +529,26 @@ def prepare_file_offset_table(data_file_path):
     :return The number of lines read or ``None`` if it did not have to build the file offset table.
     """
     file_offset_table = FileOffsetTable.create_for_data_file(data_file_path)
-    if not file_offset_table.is_valid():
-        console.info("Preparing file offset table for [%s] ... " % data_file_path, end="", flush=True)
-        line_number = 0
-        with file_offset_table:
-            with open(data_file_path, mode="rt", encoding="utf-8") as data_file:
-                while True:
-                    line = data_file.readline()
-                    if len(line) == 0:
-                        break
-                    line_number += 1
-                    if line_number % 50000 == 0:
-                        file_offset_table.add_offset(line_number, data_file.tell())
-        console.println("[OK]")
-        return line_number
-    else:
+    if file_offset_table.is_valid():
         return None
+    console.info(
+        f"Preparing file offset table for [{data_file_path}] ... ",
+        end="",
+        flush=True,
+    )
+
+    line_number = 0
+    with file_offset_table:
+        with open(data_file_path, mode="rt", encoding="utf-8") as data_file:
+            while True:
+                line = data_file.readline()
+                if len(line) == 0:
+                    break
+                line_number += 1
+                if line_number % 50000 == 0:
+                    file_offset_table.add_offset(line_number, data_file.tell())
+    console.println("[OK]")
+    return line_number
 
 
 def remove_file_offset_table(data_file_path):

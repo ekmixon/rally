@@ -46,22 +46,13 @@ class Index:
         self.types = types
 
     def matches(self, pattern):
-        if pattern is None:
-            return True
-        elif pattern in ["_all", "*"]:
-            return True
-        elif self.name == pattern:
-            return True
-        else:
-            return False
+        return pattern is None or pattern in ["_all", "*"] or self.name == pattern
 
     def __str__(self):
         return self.name
 
     def __repr__(self):
-        r = []
-        for prop, value in vars(self).items():
-            r.append("%s = [%s]" % (prop, repr(value)))
+        r = [f"{prop} = [{repr(value)}]" for prop, value in vars(self).items()]
         return ", ".join(r)
 
     def __hash__(self):
@@ -86,22 +77,13 @@ class DataStream:
         self.name = name
 
     def matches(self, pattern):
-        if pattern is None:
-            return True
-        elif pattern in ["_all", "*"]:
-            return True
-        elif self.name == pattern:
-            return True
-        else:
-            return False
+        return pattern is None or pattern in ["_all", "*"] or self.name == pattern
 
     def __str__(self):
         return self.name
 
     def __repr__(self):
-        r = []
-        for prop, value in vars(self).items():
-            r.append("%s = [%s]" % (prop, repr(value)))
+        r = [f"{prop} = [{repr(value)}]" for prop, value in vars(self).items()]
         return ", ".join(r)
 
     def __hash__(self):
@@ -135,9 +117,7 @@ class IndexTemplate:
         return self.name
 
     def __repr__(self):
-        r = []
-        for prop, value in vars(self).items():
-            r.append("%s = [%s]" % (prop, repr(value)))
+        r = [f"{prop} = [{repr(value)}]" for prop, value in vars(self).items()]
         return ", ".join(r)
 
     def __hash__(self):
@@ -165,9 +145,7 @@ class ComponentTemplate:
         return self.name
 
     def __repr__(self):
-        r = []
-        for prop, value in vars(self).items():
-            r.append("%s = [%s]" % (prop, repr(value)))
+        r = [f"{prop} = [{repr(value)}]" for prop, value in vars(self).items()]
         return ", ".join(r)
 
     def __hash__(self):
@@ -274,12 +252,10 @@ class Documents:
         return self.source_format == Documents.SOURCE_FORMAT_BULK
 
     def __str__(self):
-        return "%s documents from %s" % (self.source_format, self.document_file)
+        return f"{self.source_format} documents from {self.document_file}"
 
     def __repr__(self):
-        r = []
-        for prop, value in vars(self).items():
-            r.append("%s = [%s]" % (prop, repr(value)))
+        r = [f"{prop} = [{repr(value)}]" for prop, value in vars(self).items()]
         return ", ".join(r)
 
     def __hash__(self):
@@ -341,11 +317,11 @@ class DocumentCorpus:
         self.meta_data = meta_data or {}
 
     def number_of_documents(self, source_format):
-        num = 0
-        for doc in self.documents:
-            if doc.source_format == source_format:
-                num += doc.number_of_documents
-        return num
+        return sum(
+            doc.number_of_documents
+            for doc in self.documents
+            if doc.source_format == source_format
+        )
 
     def compressed_size_in_bytes(self, source_format):
         num = 0
@@ -404,9 +380,7 @@ class DocumentCorpus:
         return self.name
 
     def __repr__(self):
-        r = []
-        for prop, value in vars(self).items():
-            r.append("%s = [%s]" % (prop, repr(value)))
+        r = [f"{prop} = [{repr(value)}]" for prop, value in vars(self).items()]
         return ", ".join(r)
 
     def __hash__(self):
@@ -451,36 +425,34 @@ class Track:
         :param has_plugins: True iff the track also defines plugins (e.g. custom runners or parameter sources).
         """
         self.name = name
-        self.meta_data = meta_data if meta_data else {}
+        self.meta_data = meta_data or {}
         self.description = description if description is not None else ""
-        self.challenges = challenges if challenges else []
-        self.indices = indices if indices else []
-        self.data_streams = data_streams if data_streams else []
-        self.corpora = corpora if corpora else []
-        self.templates = templates if templates else []
-        self.composable_templates = composable_templates if composable_templates else []
-        self.component_templates = component_templates if component_templates else []
+        self.challenges = challenges or []
+        self.indices = indices or []
+        self.data_streams = data_streams or []
+        self.corpora = corpora or []
+        self.templates = templates or []
+        self.composable_templates = composable_templates or []
+        self.component_templates = component_templates or []
         self.has_plugins = has_plugins
 
     @property
     def default_challenge(self):
-        for challenge in self.challenges:
-            if challenge.default:
-                return challenge
-        # This should only happen if we don't have any challenges
-        return None
+        return next(
+            (challenge for challenge in self.challenges if challenge.default), None
+        )
 
     @property
     def selected_challenge(self):
-        for challenge in self.challenges:
-            if challenge.selected:
-                return challenge
-        return None
+        return next(
+            (challenge for challenge in self.challenges if challenge.selected),
+            None,
+        )
 
     @property
     def selected_challenge_or_default(self):
         selected = self.selected_challenge
-        return selected if selected else self.default_challenge
+        return selected or self.default_challenge
 
     def find_challenge_or_default(self, name):
         """
@@ -496,15 +468,16 @@ class Track:
         for challenge in self.challenges:
             if challenge.name == name:
                 return challenge
-        raise exceptions.InvalidName("Unknown challenge [%s] for track [%s]" % (name, self.name))
+        raise exceptions.InvalidName(
+            f"Unknown challenge [{name}] for track [{self.name}]"
+        )
 
     @property
     def number_of_documents(self):
-        num_docs = 0
-        for corpus in self.corpora:
-            # TODO #341: Improve API to let users define what they want (everything, just specific types, ...)
-            num_docs += corpus.number_of_documents(Documents.SOURCE_FORMAT_BULK)
-        return num_docs
+        return sum(
+            corpus.number_of_documents(Documents.SOURCE_FORMAT_BULK)
+            for corpus in self.corpora
+        )
 
     @property
     def compressed_size_in_bytes(self):
@@ -534,9 +507,7 @@ class Track:
         return self.name
 
     def __repr__(self):
-        r = []
-        for prop, value in vars(self).items():
-            r.append("%s = [%s]" % (prop, repr(value)))
+        r = [f"{prop} = [{repr(value)}]" for prop, value in vars(self).items()]
         return ", ".join(r)
 
     def __hash__(self):
@@ -596,14 +567,14 @@ class Challenge:
         schedule=None,
     ):
         self.name = name
-        self.parameters = parameters if parameters else {}
-        self.meta_data = meta_data if meta_data else {}
+        self.parameters = parameters or {}
+        self.meta_data = meta_data or {}
         self.description = description
         self.user_info = user_info
         self.default = default
         self.selected = selected
         self.auto_generated = auto_generated
-        self.schedule = schedule if schedule else []
+        self.schedule = schedule or []
 
     def prepend_tasks(self, tasks):
         self.schedule = tasks + self.schedule
@@ -615,9 +586,7 @@ class Challenge:
         return self.name
 
     def __repr__(self):
-        r = []
-        for prop, value in vars(self).items():
-            r.append("%s = [%s]" % (prop, repr(value)))
+        r = [f"{prop} = [{repr(value)}]" for prop, value in vars(self).items()]
         return ", ".join(r)
 
     def __hash__(self):
@@ -722,7 +691,9 @@ class OperationType(Enum):
         """
         # Pylint complains that self.name is not iterable
         # pylint: disable=not-an-iterable
-        return "".join(["-" + c.lower() if c.isupper() else c for c in self.name]).lstrip("-")
+        return "".join(
+            [f"-{c.lower()}" if c.isupper() else c for c in self.name]
+        ).lstrip("-")
 
     # pylint: disable=too-many-return-statements
     @classmethod
@@ -887,10 +858,10 @@ class TaskTagFilter:
 class Singleton(type):
     _instances = {}
 
-    def __call__(cls, *args, **kwargs):
-        if cls not in cls._instances:
-            cls._instances[cls] = super(Singleton, cls).__call__(*args, **kwargs)
-        return cls._instances[cls]
+    def __call__(self, *args, **kwargs):
+        if self not in self._instances:
+            self._instances[self] = super(Singleton, self).__call__(*args, **kwargs)
+        return self._instances[self]
 
 
 # Schedule elements
@@ -905,17 +876,10 @@ class Parallel:
         if self._clients is not None:
             return self._clients
         else:
-            num_clients = 0
-            for task in self.tasks:
-                num_clients += task.clients
-            return num_clients
+            return sum(task.clients for task in self.tasks)
 
     def matches(self, task_filter):
-        # a parallel element matches if any of its elements match
-        for task in self.tasks:
-            if task.matches(task_filter):
-                return True
-        return False
+        return any(task.matches(task_filter) for task in self.tasks)
 
     def remove_task(self, task):
         self.tasks.remove(task)
@@ -927,9 +891,7 @@ class Parallel:
         return "%d parallel tasks" % len(self.tasks)
 
     def __repr__(self):
-        r = []
-        for prop, value in vars(self).items():
-            r.append("%s = [%s]" % (prop, repr(value)))
+        r = [f"{prop} = [{repr(value)}]" for prop, value in vars(self).items()]
         return ", ".join(r)
 
     def __hash__(self):
@@ -971,7 +933,7 @@ class Task:
             self.tags = tags
         else:
             self.tags = []
-        self.meta_data = meta_data if meta_data else {}
+        self.meta_data = meta_data or {}
         self.warmup_iterations = warmup_iterations
         self.iterations = iterations
         self.warmup_time_period = warmup_time_period
@@ -981,7 +943,7 @@ class Task:
         self.completes_parent = completes_parent
         self.any_completes_parent = any_completes_parent
         self.schedule = schedule
-        self.params = params if params else {}
+        self.params = params or {}
         self.nested = False
 
     def matches(self, task_filter):
@@ -1013,8 +975,8 @@ class Task:
             if isinstance(target_throughput, str):
                 matches = re.match(Task.THROUGHPUT_PATTERN, target_throughput)
                 if matches:
-                    value = float(matches.group("value"))
-                    unit = matches.group("unit")
+                    value = float(matches["value"])
+                    unit = matches["unit"]
                 else:
                     raise exceptions.InvalidSyntax(f"Task [{self}] specifies invalid target throughput [{target_throughput}].")
             elif numeric(target_throughput):
@@ -1022,10 +984,7 @@ class Task:
             else:
                 raise exceptions.InvalidSyntax(f"Target throughput [{target_throughput}] for task [{self}] must be string or numeric.")
 
-        if value:
-            return Throughput(value, unit)
-        else:
-            return None
+        return Throughput(value, unit) if value else None
 
     @property
     def ignore_response_error_level(self):
@@ -1049,12 +1008,12 @@ class Task:
             "continue": will continue for non fatal errors
         """
 
-        behavior = "continue"
-        if default_error_behavior == "abort":
-            if self.ignore_response_error_level != "non-fatal":
-                behavior = "abort"
-
-        return behavior
+        return (
+            "abort"
+            if default_error_behavior == "abort"
+            and self.ignore_response_error_level != "non-fatal"
+            else "continue"
+        )
 
     def __hash__(self):
         # Note that we do not include `params` in __hash__ and __eq__ (the other attributes suffice to uniquely define a task)
@@ -1107,9 +1066,7 @@ class Task:
         return self.name
 
     def __repr__(self):
-        r = []
-        for prop, value in vars(self).items():
-            r.append("%s = [%s]" % (prop, repr(value)))
+        r = [f"{prop} = [{repr(value)}]" for prop, value in vars(self).items()]
         return ", ".join(r)
 
 
@@ -1118,7 +1075,7 @@ class Operation:
         if params is None:
             params = {}
         self.name = name
-        self.meta_data = meta_data if meta_data else {}
+        self.meta_data = meta_data or {}
         self.type = operation_type
         self.params = params
         self.param_source = param_source
@@ -1137,7 +1094,5 @@ class Operation:
         return self.name
 
     def __repr__(self):
-        r = []
-        for prop, value in vars(self).items():
-            r.append("%s = [%s]" % (prop, repr(value)))
+        r = [f"{prop} = [{repr(value)}]" for prop, value in vars(self).items()]
         return ", ".join(r)

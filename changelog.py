@@ -27,10 +27,14 @@ REPO = "rally"
 
 
 def find_milestone(repo, title):
-    for m in repo.milestones(state="open", sort="due_date"):
-        if m.title == title:
-            return m
-    return None
+    return next(
+        (
+            m
+            for m in repo.milestones(state="open", sort="due_date")
+            if m.title == title
+        ),
+        None,
+    )
 
 
 def print_category(heading, issue_list):
@@ -43,14 +47,13 @@ def print_category(heading, issue_list):
 
 def print_issue(issue):
     breaking_hint = " (Breaking)" if labelled(issue, label_name="breaking") else ""
-    print("* [#%s](%s)%s: %s" % (str(issue.number), issue.html_url, breaking_hint, issue.title))
+    print(
+        f"* [#{str(issue.number)}]({issue.html_url}){breaking_hint}: {issue.title}"
+    )
 
 
 def labelled(issue, label_name):
-    for label in issue.labels():
-        if label.name == label_name:
-            return True
-    return False
+    return any(label.name == label_name for label in issue.labels())
 
 
 def is_pr(issue):
@@ -82,19 +85,26 @@ def prs(gh, milestone, with_labels, without_labels=None):
 
 def main():
     if len(sys.argv) != 2:
-        print("usage: %s milestone" % sys.argv[0], file=sys.stderr)
+        print(f"usage: {sys.argv[0]} milestone", file=sys.stderr)
         exit(1)
 
     milestone_name = sys.argv[1]
 
     # requires a personal Github access token with permission `public_repo` (see https://github.com/settings/tokens)
-    gh = github3.login(token=open("%s/.github/rally_release_changelog.token" % os.getenv("HOME"), "r").readline().strip())
+    gh = github3.login(
+        token=open(
+            f'{os.getenv("HOME")}/.github/rally_release_changelog.token', "r"
+        )
+        .readline()
+        .strip()
+    )
+
 
     rally_repo = gh.repository(ORG, REPO)
 
     milestone = find_milestone(rally_repo, title=milestone_name)
     if not milestone:
-        print("No open milestone named [%s] found." % milestone_name, file=sys.stderr)
+        print(f"No open milestone named [{milestone_name}] found.", file=sys.stderr)
         exit(2)
     if milestone.open_issues > 0:
         print("There are [%d] open issues on milestone [%s]. Aborting..." % (milestone.open_issues, milestone_name), file=sys.stderr)

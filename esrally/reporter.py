@@ -138,14 +138,15 @@ class SummaryReporter:
         if values["error_rate"] > 0:
             warnings.append(f"Error rate is {round(values['error_rate'] * 100, 2)} for operation '{op}'. Please check the logs.")
         if values["throughput"]["median"] is None:
-            error_rate = values["error_rate"]
-            if error_rate:
+            if error_rate := values["error_rate"]:
                 warnings.append(
                     "No throughput metrics available for [%s]. Likely cause: Error rate is %.1f%%. Please check the logs."
                     % (op, error_rate * 100)
                 )
             else:
-                warnings.append("No throughput metrics available for [%s]. Likely cause: The benchmark ended already during warmup." % op)
+                warnings.append(
+                    f"No throughput metrics available for [{op}]. Likely cause: The benchmark ended already during warmup."
+                )
 
     def write_report(self, metrics_table):
         write_single_report(
@@ -184,8 +185,13 @@ class SummaryReporter:
             for percentile in metrics.percentiles_for_sample_size(sys.maxsize):
                 percentile_value = value.get(metrics.encode_float_key(percentile))
                 a_line = self._line(
-                    "%sth percentile %s" % (percentile, name), task, percentile_value, "ms", force=self.report_all_percentile_values
+                    f"{percentile}th percentile {name}",
+                    task,
+                    percentile_value,
+                    "ms",
+                    force=self.report_all_percentile_values,
                 )
+
                 self._append_non_empty(lines, a_line)
         return lines
 
@@ -214,30 +220,44 @@ class SummaryReporter:
     def _report_total_time(self, name, total_time):
         unit = "min"
         return self._join(
-            self._line("Cumulative {} of primary shards".format(name), "", total_time, unit, convert.ms_to_minutes),
+            self._line(
+                f"Cumulative {name} of primary shards",
+                "",
+                total_time,
+                unit,
+                convert.ms_to_minutes,
+            )
         )
 
     def _report_total_time_per_shard(self, name, total_time_per_shard):
         unit = "min"
         return self._join(
             self._line(
-                "Min cumulative {} across primary shards".format(name), "", total_time_per_shard.get("min"), unit, convert.ms_to_minutes
+                f"Min cumulative {name} across primary shards",
+                "",
+                total_time_per_shard.get("min"),
+                unit,
+                convert.ms_to_minutes,
             ),
             self._line(
-                "Median cumulative {} across primary shards".format(name),
+                f"Median cumulative {name} across primary shards",
                 "",
                 total_time_per_shard.get("median"),
                 unit,
                 convert.ms_to_minutes,
             ),
             self._line(
-                "Max cumulative {} across primary shards".format(name), "", total_time_per_shard.get("max"), unit, convert.ms_to_minutes
+                f"Max cumulative {name} across primary shards",
+                "",
+                total_time_per_shard.get("max"),
+                unit,
+                convert.ms_to_minutes,
             ),
         )
 
     def _report_total_count(self, name, total_count):
         return self._join(
-            self._line("Cumulative {} of primary shards".format(name), "", total_count, ""),
+            self._line(f"Cumulative {name} of primary shards", "", total_count, "")
         )
 
     def _report_ml_processing_times(self, stats):
@@ -245,10 +265,35 @@ class SummaryReporter:
         for processing_time in stats.ml_processing_time:
             job_name = processing_time["job"]
             unit = processing_time["unit"]
-            lines.append(self._line("Min ML processing time", job_name, processing_time["min"], unit))
-            lines.append(self._line("Mean ML processing time", job_name, processing_time["mean"], unit))
-            lines.append(self._line("Median ML processing time", job_name, processing_time["median"], unit))
-            lines.append(self._line("Max ML processing time", job_name, processing_time["max"], unit))
+            lines.extend(
+                (
+                    self._line(
+                        "Min ML processing time",
+                        job_name,
+                        processing_time["min"],
+                        unit,
+                    ),
+                    self._line(
+                        "Mean ML processing time",
+                        job_name,
+                        processing_time["mean"],
+                        unit,
+                    ),
+                    self._line(
+                        "Median ML processing time",
+                        job_name,
+                        processing_time["median"],
+                        unit,
+                    ),
+                    self._line(
+                        "Max ML processing time",
+                        job_name,
+                        processing_time["max"],
+                        unit,
+                    ),
+                )
+            )
+
         return lines
 
     def _report_gc_metrics(self, stats):
@@ -280,15 +325,45 @@ class SummaryReporter:
         return self._join(self._line("Segment count", "", stats.segment_count, ""))
 
     def _report_transform_stats(self, stats):
-        lines = []
-        for processing_time in stats.total_transform_processing_times:
-            lines.append(self._line("Transform processing time", processing_time["id"], processing_time["mean"], processing_time["unit"]))
-        for index_time in stats.total_transform_index_times:
-            lines.append(self._line("Transform indexing time", index_time["id"], index_time["mean"], index_time["unit"]))
-        for search_time in stats.total_transform_search_times:
-            lines.append(self._line("Transform search time", search_time["id"], search_time["mean"], search_time["unit"]))
-        for throughput in stats.total_transform_throughput:
-            lines.append(self._line("Transform throughput", throughput["id"], throughput["mean"], throughput["unit"]))
+        lines = [
+            self._line(
+                "Transform processing time",
+                processing_time["id"],
+                processing_time["mean"],
+                processing_time["unit"],
+            )
+            for processing_time in stats.total_transform_processing_times
+        ]
+
+        lines.extend(
+            self._line(
+                "Transform indexing time",
+                index_time["id"],
+                index_time["mean"],
+                index_time["unit"],
+            )
+            for index_time in stats.total_transform_index_times
+        )
+
+        lines.extend(
+            self._line(
+                "Transform search time",
+                search_time["id"],
+                search_time["mean"],
+                search_time["unit"],
+            )
+            for search_time in stats.total_transform_search_times
+        )
+
+        lines.extend(
+            self._line(
+                "Transform throughput",
+                throughput["id"],
+                throughput["mean"],
+                throughput["unit"],
+            )
+            for throughput in stats.total_transform_throughput
+        )
 
         return lines
 
@@ -326,24 +401,24 @@ class ComparisonReporter:
 
         print_internal("")
         print_internal("Comparing baseline")
-        print_internal("  Race ID: %s" % r1.race_id)
-        print_internal("  Race timestamp: %s" % r1.race_timestamp)
+        print_internal(f"  Race ID: {r1.race_id}")
+        print_internal(f"  Race timestamp: {r1.race_timestamp}")
         if r1.challenge_name:
-            print_internal("  Challenge: %s" % r1.challenge_name)
-        print_internal("  Car: %s" % r1.car_name)
+            print_internal(f"  Challenge: {r1.challenge_name}")
+        print_internal(f"  Car: {r1.car_name}")
         if r1.user_tags:
-            r1_user_tags = ", ".join(["%s=%s" % (k, v) for k, v in sorted(r1.user_tags.items())])
-            print_internal("  User tags: %s" % r1_user_tags)
+            r1_user_tags = ", ".join([f"{k}={v}" for k, v in sorted(r1.user_tags.items())])
+            print_internal(f"  User tags: {r1_user_tags}")
         print_internal("")
         print_internal("with contender")
-        print_internal("  Race ID: %s" % r2.race_id)
-        print_internal("  Race timestamp: %s" % r2.race_timestamp)
+        print_internal(f"  Race ID: {r2.race_id}")
+        print_internal(f"  Race timestamp: {r2.race_timestamp}")
         if r2.challenge_name:
-            print_internal("  Challenge: %s" % r2.challenge_name)
-        print_internal("  Car: %s" % r2.car_name)
+            print_internal(f"  Challenge: {r2.challenge_name}")
+        print_internal(f"  Car: {r2.car_name}")
         if r2.user_tags:
-            r2_user_tags = ", ".join(["%s=%s" % (k, v) for k, v in sorted(r2.user_tags.items())])
-            print_internal("  User tags: %s" % r2_user_tags)
+            r2_user_tags = ", ".join([f"{k}={v}" for k, v in sorted(r2.user_tags.items())])
+            print_internal(f"  User tags: {r2_user_tags}")
         print_header(FINAL_SCORE)
 
         metric_table_plain = self._metrics_table(baseline_stats, contender_stats, plain=True)
@@ -425,7 +500,7 @@ class ComparisonReporter:
             self._append_non_empty(
                 lines,
                 self._line(
-                    "%sth percentile %s" % (percentile, name),
+                    f"{percentile}th percentile {name}",
                     baseline_value,
                     contender_value,
                     task,
@@ -433,6 +508,7 @@ class ComparisonReporter:
                     treat_increase_as_improvement=False,
                 ),
             )
+
         return lines
 
     def _report_error_rate(self, baseline_stats, contender_stats, task):
@@ -458,36 +534,43 @@ class ComparisonReporter:
             # O(n^2) but we assume here only a *very* limited number of jobs (usually just one)
             for contender in contender_stats.ml_processing_time:
                 if contender["job"] == job_name:
-                    lines.append(
-                        self._line(
-                            "Min ML processing time", baseline["min"], contender["min"], job_name, unit, treat_increase_as_improvement=False
+                    lines.extend(
+                        (
+                            self._line(
+                                "Min ML processing time",
+                                baseline["min"],
+                                contender["min"],
+                                job_name,
+                                unit,
+                                treat_increase_as_improvement=False,
+                            ),
+                            self._line(
+                                "Mean ML processing time",
+                                baseline["mean"],
+                                contender["mean"],
+                                job_name,
+                                unit,
+                                treat_increase_as_improvement=False,
+                            ),
+                            self._line(
+                                "Median ML processing time",
+                                baseline["median"],
+                                contender["median"],
+                                job_name,
+                                unit,
+                                treat_increase_as_improvement=False,
+                            ),
+                            self._line(
+                                "Max ML processing time",
+                                baseline["max"],
+                                contender["max"],
+                                job_name,
+                                unit,
+                                treat_increase_as_improvement=False,
+                            ),
                         )
                     )
-                    lines.append(
-                        self._line(
-                            "Mean ML processing time",
-                            baseline["mean"],
-                            contender["mean"],
-                            job_name,
-                            unit,
-                            treat_increase_as_improvement=False,
-                        )
-                    )
-                    lines.append(
-                        self._line(
-                            "Median ML processing time",
-                            baseline["median"],
-                            contender["median"],
-                            job_name,
-                            unit,
-                            treat_increase_as_improvement=False,
-                        )
-                    )
-                    lines.append(
-                        self._line(
-                            "Max ML processing time", baseline["max"], contender["max"], job_name, unit, treat_increase_as_improvement=False
-                        )
-                    )
+
         return lines
 
     def _report_transform_processing_times(self, baseline_stats, contender_stats):
@@ -496,60 +579,64 @@ class ComparisonReporter:
             return lines
         for baseline in baseline_stats.total_transform_processing_times:
             transform_id = baseline["id"]
-            for contender in contender_stats.total_transform_processing_times:
-                if contender["id"] == transform_id:
-                    lines.append(
-                        self._line(
-                            "Transform processing time",
-                            baseline["mean"],
-                            contender["mean"],
-                            transform_id,
-                            baseline["unit"],
-                            treat_increase_as_improvement=False,
-                        )
-                    )
+            lines.extend(
+                self._line(
+                    "Transform processing time",
+                    baseline["mean"],
+                    contender["mean"],
+                    transform_id,
+                    baseline["unit"],
+                    treat_increase_as_improvement=False,
+                )
+                for contender in contender_stats.total_transform_processing_times
+                if contender["id"] == transform_id
+            )
+
         for baseline in baseline_stats.total_transform_index_times:
             transform_id = baseline["id"]
-            for contender in contender_stats.total_transform_index_times:
-                if contender["id"] == transform_id:
-                    lines.append(
-                        self._line(
-                            "Transform indexing time",
-                            baseline["mean"],
-                            contender["mean"],
-                            transform_id,
-                            baseline["unit"],
-                            treat_increase_as_improvement=False,
-                        )
-                    )
+            lines.extend(
+                self._line(
+                    "Transform indexing time",
+                    baseline["mean"],
+                    contender["mean"],
+                    transform_id,
+                    baseline["unit"],
+                    treat_increase_as_improvement=False,
+                )
+                for contender in contender_stats.total_transform_index_times
+                if contender["id"] == transform_id
+            )
+
         for baseline in baseline_stats.total_transform_search_times:
             transform_id = baseline["id"]
-            for contender in contender_stats.total_transform_search_times:
-                if contender["id"] == transform_id:
-                    lines.append(
-                        self._line(
-                            "Transform search time",
-                            baseline["mean"],
-                            contender["mean"],
-                            transform_id,
-                            baseline["unit"],
-                            treat_increase_as_improvement=False,
-                        )
-                    )
+            lines.extend(
+                self._line(
+                    "Transform search time",
+                    baseline["mean"],
+                    contender["mean"],
+                    transform_id,
+                    baseline["unit"],
+                    treat_increase_as_improvement=False,
+                )
+                for contender in contender_stats.total_transform_search_times
+                if contender["id"] == transform_id
+            )
+
         for baseline in baseline_stats.total_transform_throughput:
             transform_id = baseline["id"]
-            for contender in contender_stats.total_transform_throughput:
-                if contender["id"] == transform_id:
-                    lines.append(
-                        self._line(
-                            "Transform throughput",
-                            baseline["mean"],
-                            contender["mean"],
-                            transform_id,
-                            baseline["unit"],
-                            treat_increase_as_improvement=True,
-                        )
-                    )
+            lines.extend(
+                self._line(
+                    "Transform throughput",
+                    baseline["mean"],
+                    contender["mean"],
+                    transform_id,
+                    baseline["unit"],
+                    treat_increase_as_improvement=True,
+                )
+                for contender in contender_stats.total_transform_throughput
+                if contender["id"] == transform_id
+            )
+
         return lines
 
     def _report_total_times(self, baseline_stats, contender_stats):
@@ -665,21 +752,21 @@ class ComparisonReporter:
         unit = "min"
         return self._join(
             self._line(
-                "Cumulative {} of primary shards".format(name),
+                f"Cumulative {name} of primary shards",
                 baseline_total,
                 contender_total,
                 "",
                 unit,
                 treat_increase_as_improvement=False,
                 formatter=convert.ms_to_minutes,
-            ),
+            )
         )
 
     def _report_total_time_per_shard(self, name, baseline_per_shard, contender_per_shard):
         unit = "min"
         return self._join(
             self._line(
-                "Min cumulative {} across primary shard".format(name),
+                f"Min cumulative {name} across primary shard",
                 baseline_per_shard.get("min"),
                 contender_per_shard.get("min"),
                 "",
@@ -688,7 +775,7 @@ class ComparisonReporter:
                 formatter=convert.ms_to_minutes,
             ),
             self._line(
-                "Median cumulative {} across primary shard".format(name),
+                f"Median cumulative {name} across primary shard",
                 baseline_per_shard.get("median"),
                 contender_per_shard.get("median"),
                 "",
@@ -697,7 +784,7 @@ class ComparisonReporter:
                 formatter=convert.ms_to_minutes,
             ),
             self._line(
-                "Max cumulative {} across primary shard".format(name),
+                f"Max cumulative {name} across primary shard",
                 baseline_per_shard.get("max"),
                 contender_per_shard.get("max"),
                 "",
@@ -710,7 +797,12 @@ class ComparisonReporter:
     def _report_total_count(self, name, baseline_total, contender_total):
         return self._join(
             self._line(
-                "Cumulative {} of primary shards".format(name), baseline_total, contender_total, "", "", treat_increase_as_improvement=False
+                f"Cumulative {name} of primary shards",
+                baseline_total,
+                contender_total,
+                "",
+                "",
+                treat_increase_as_improvement=False,
             )
         )
 

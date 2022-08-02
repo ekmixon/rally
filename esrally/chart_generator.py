@@ -45,9 +45,9 @@ def index_label(race_config):
     if race_config.label:
         return race_config.label
 
-    label = "%s-%s" % (race_config.challenge, race_config.car)
+    label = f"{race_config.challenge}-{race_config.car}"
     if race_config.plugins:
-        label += "-%s" % race_config.plugins.replace(":", "-").replace(",", "+")
+        label += f'-{race_config.plugins.replace(":", "-").replace(",", "+")}'
     if race_config.node_count > 1:
         label += " (%d nodes)" % race_config.node_count
     return label
@@ -449,20 +449,26 @@ class BarCharts:
         for race_config in race_configs:
             label = index_label(race_config)
             # the assumption is that we only have one bulk task
-            for bulk_task in race_config.bulk_tasks:
-                filters.append(
-                    {
-                        "input": {
-                            "query": {
-                                "query_string": {
-                                    "analyze_wildcard": True,
-                                    "query": 'task:"%s" AND %s' % (bulk_task, BarCharts.filter_string(environment, race_config)),
-                                }
+            filters.extend(
+                {
+                    "input": {
+                        "query": {
+                            "query_string": {
+                                "analyze_wildcard": True,
+                                "query": 'task:"%s" AND %s'
+                                % (
+                                    bulk_task,
+                                    BarCharts.filter_string(
+                                        environment, race_config
+                                    ),
+                                ),
                             }
-                        },
-                        "label": label,
-                    }
-                )
+                        }
+                    },
+                    "label": label,
+                }
+                for bulk_task in race_config.bulk_tasks
+            )
 
         vis_state = {
             "aggs": [
@@ -1002,8 +1008,12 @@ class TimeSeriesCharts:
     def query(environment, race_config, q, iterations):
         metric = "latency"
         title = TimeSeriesCharts.format_title(
-            environment, race_config.track, es_license=race_config.es_license, suffix="%s-%s-%s" % (race_config.label, q, metric)
+            environment,
+            race_config.track,
+            es_license=race_config.es_license,
+            suffix=f"{race_config.label}-{q}-{metric}",
         )
+
 
         vis_state = {
             "title": title,
@@ -1135,15 +1145,19 @@ class TimeSeriesCharts:
         t = race_configs[0].track
         for idx, race_config in enumerate(race_configs):
             label = index_label(race_config)
-            for bulk_task in race_config.bulk_tasks:
-                filters.append(
-                    {
-                        "filter": 'task:"%s" AND %s' % (bulk_task, TimeSeriesCharts.filter_string(environment, race_config)),
-                        "label": label,
-                        "color": color_scheme_rgba[idx % len(color_scheme_rgba)],
-                        "id": str(uuid.uuid4()),
-                    }
-                )
+            filters.extend(
+                {
+                    "filter": 'task:"%s" AND %s'
+                    % (
+                        bulk_task,
+                        TimeSeriesCharts.filter_string(environment, race_config),
+                    ),
+                    "label": label,
+                    "color": color_scheme_rgba[idx % len(color_scheme_rgba)],
+                    "id": str(uuid.uuid4()),
+                }
+                for bulk_task in race_config.bulk_tasks
+            )
 
         vis_state = {
             "title": title,
@@ -1267,8 +1281,16 @@ def generate_queries(chart_type, race_configs, environment):
 
     for race_config in race_configs:
         if "query" in race_config.charts:
-            for q in race_config.throttled_tasks:
-                structures.append(chart_type.query(environment, race_config, q.name, q.params.get("iterations", 100)))
+            structures.extend(
+                chart_type.query(
+                    environment,
+                    race_config,
+                    q.name,
+                    q.params.get("iterations", 100),
+                )
+                for q in race_config.throttled_tasks
+            )
+
     return structures
 
 
@@ -1278,8 +1300,12 @@ def generate_io(chart_type, race_configs, environment):
     for race_config in race_configs:
         if "io" in race_config.charts:
             title = chart_type.format_title(
-                environment, race_config.track, es_license=race_config.es_license, suffix="%s-io" % race_config.label
+                environment,
+                race_config.track,
+                es_license=race_config.es_license,
+                suffix=f"{race_config.label}-io",
             )
+
             structures.append(chart_type.io(title, environment, race_config))
 
     return structures
@@ -1290,8 +1316,12 @@ def generate_gc(chart_type, race_configs, environment):
     for race_config in race_configs:
         if "gc" in race_config.charts:
             title = chart_type.format_title(
-                environment, race_config.track, es_license=race_config.es_license, suffix="%s-gc" % race_config.label
+                environment,
+                race_config.track,
+                es_license=race_config.es_license,
+                suffix=f"{race_config.label}-gc",
             )
+
             structures.append(chart_type.gc(title, environment, race_config))
 
     return structures
@@ -1467,21 +1497,23 @@ class RaceConfig:
     def throttled_tasks(self):
         task_names = []
         for task in self.track.find_challenge_or_default(self.challenge).schedule:
-            for sub_task in task:
-                # We are assuming here that each task with a target throughput or target interval is interesting for latency charts.
-                #
-                # As a temporary workaround we're also treating operations of type "eql" as throttled tasks (requiring a latency
-                # or service time chart) although they are (at the moment) not throttled. These tasks originate from the EQL track
-                # available at https://github.com/elastic/rally-tracks/tree/master/eql.
-                #
-                # We should refactor the chart generator to make this classification logic more flexible so the user can specify
-                # which tasks / or types of operations should be used for which chart types.
+            task_names.extend(
+                sub_task
+                for sub_task in task
                 if (
-                    sub_task.operation.type in ["search", "composite", "eql", "paginated-search", "scroll-search"]
+                    sub_task.operation.type
+                    in [
+                        "search",
+                        "composite",
+                        "eql",
+                        "paginated-search",
+                        "scroll-search",
+                    ]
                     or "target-throughput" in sub_task.params
                     or "target-interval" in sub_task.params
-                ):
-                    task_names.append(sub_task)
+                )
+            )
+
         return task_names
 
 
@@ -1600,8 +1632,7 @@ def generate(cfg):
     elif chart_type == TimeSeriesCharts:
         structures = gen_charts_from_track_combinations(race_configs, chart_type, env, logger)
 
-    output_path = cfg.opts("generator", "output.path")
-    if output_path:
+    if output_path := cfg.opts("generator", "output.path"):
         with open(io.normalize_path(output_path), mode="wt", encoding="utf-8") as f:
             for record in structures:
                 print(json.dumps(record), file=f)

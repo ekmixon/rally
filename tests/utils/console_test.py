@@ -166,9 +166,13 @@ class TestCmdLineProgressReporter:
         mock_printer.assert_has_calls(
             [
                 mock.call(" " * width, end=""),
-                mock.call("\x1b[{}D{}{}.".format(width, message, " " * (width - len(message) - 1)), end=""),
+                mock.call(
+                    f'\x1b[{width}D{message}{" " * (width - len(message) - 1)}.',
+                    end="",
+                ),
             ]
         )
+
         patched_flush.assert_called_once_with()
 
     @mock.patch("sys.stdout.flush")
@@ -189,9 +193,13 @@ class TestCmdLineProgressReporter:
         mock_printer.assert_has_calls(
             [
                 mock.call(" " * width, end=""),
-                mock.call("\x1b[{}D{}{}.".format(width, message, " " * (width - len(message) - 1)), end=""),
+                mock.call(
+                    f'\x1b[{width}D{message}{" " * (width - len(message) - 1)}.',
+                    end="",
+                ),
             ]
         )
+
         patched_flush.assert_called_once_with()
 
     @mock.patch("sys.stdout.flush")

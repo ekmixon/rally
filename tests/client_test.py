@@ -181,25 +181,24 @@ class EsClientFactoryTests(TestCase):
         client_ssl_options = {"client_cert": "utils/resources/certs/client.crt", "client_key": "utils/resources/certs/client.key"}
 
         random_client_ssl_option = random.choice(list(client_ssl_options.keys()))
-        missing_client_ssl_option = list(set(client_ssl_options) - set([random_client_ssl_option]))[0]
-        client_options.update({random_client_ssl_option: client_ssl_options[random_client_ssl_option]})
+        missing_client_ssl_option = list(
+            set(client_ssl_options) - {random_client_ssl_option}
+        )[0]
+
+        client_options[random_client_ssl_option] = client_ssl_options[
+            random_client_ssl_option
+        ]
+
 
         with self.assertRaises(exceptions.SystemSetupError) as ctx:
             with mock.patch.object(console, "println") as mocked_console_println:
                 client.EsClientFactory(hosts, client_options)
         mocked_console_println.assert_called_once_with(
-            "'{}' is missing from client-options but '{}' has been specified.\n"
-            "If your Elasticsearch setup requires client certificate verification both need to be supplied.\n"
-            "Read the documentation at {}\n".format(
-                missing_client_ssl_option,
-                random_client_ssl_option,
-                console.format.link(doc_link("command_line_reference.html#client-options")),
-            )
+            f"""'{missing_client_ssl_option}' is missing from client-options but '{random_client_ssl_option}' has been specified.\nIf your Elasticsearch setup requires client certificate verification both need to be supplied.\nRead the documentation at {console.format.link(doc_link("command_line_reference.html#client-options"))}\n"""
         )
+
         self.assertEqual(
-            "Cannot specify '{}' without also specifying '{}' in client-options.".format(
-                random_client_ssl_option, missing_client_ssl_option
-            ),
+            f"Cannot specify '{random_client_ssl_option}' without also specifying '{missing_client_ssl_option}' in client-options.",
             ctx.exception.args[0],
         )
 

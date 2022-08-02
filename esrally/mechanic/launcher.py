@@ -57,7 +57,7 @@ class DockerLauncher:
 
         ret = process.run_subprocess_with_logging(compose_cmd)
         if ret != 0:
-            msg = "Docker daemon startup failed with exit code [{}]".format(ret)
+            msg = f"Docker daemon startup failed with exit code [{ret}]"
             logging.error(msg)
             raise exceptions.LaunchError(msg)
 
@@ -65,14 +65,15 @@ class DockerLauncher:
         self._wait_for_healthy_running_container(container_id, DockerLauncher.PROCESS_WAIT_TIMEOUT_SECONDS)
 
     def _docker_compose(self, compose_config, cmd):
-        return "docker-compose -f {} {}".format(os.path.join(compose_config, "docker-compose.yml"), cmd)
+        return f'docker-compose -f {os.path.join(compose_config, "docker-compose.yml")} {cmd}'
 
     def _get_container_id(self, compose_config):
         compose_ps_cmd = self._docker_compose(compose_config, "ps -q")
         return process.run_subprocess_with_output(compose_ps_cmd)[0]
 
     def _wait_for_healthy_running_container(self, container_id, timeout):
-        cmd = 'docker ps -a --filter "id={}" --filter "status=running" --filter "health=healthy" -q'.format(container_id)
+        cmd = f'docker ps -a --filter "id={container_id}" --filter "status=running" --filter "health=healthy" -q'
+
         stop_watch = self.clock.stop_watch()
         stop_watch.start()
         while stop_watch.split_time() < timeout:
@@ -80,7 +81,7 @@ class DockerLauncher:
             if len(containers) > 0:
                 return
             time.sleep(0.5)
-        msg = "No healthy running container after {} seconds!".format(timeout)
+        msg = f"No healthy running container after {timeout} seconds!"
         logging.error(msg)
         raise exceptions.LaunchError(msg)
 
@@ -103,14 +104,14 @@ def wait_for_pidfile(pidfilename, timeout=60, clock=time.Clock):
     while stop_watch.split_time() < timeout:
         try:
             with open(pidfilename, "rb") as f:
-                buf = f.read()
-                if not buf:
+                if buf := f.read():
+                    return int(buf)
+                else:
                     raise EOFError
-                return int(buf)
         except (FileNotFoundError, EOFError):
             time.sleep(0.5)
 
-    msg = "pid file not available after {} seconds!".format(timeout)
+    msg = f"pid file not available after {timeout} seconds!"
     logging.error(msg)
     raise exceptions.LaunchError(msg)
 
@@ -212,11 +213,16 @@ class ProcessLauncher:
         if os.name == "posix" and os.geteuid() == 0:
             raise exceptions.LaunchError("Cannot launch Elasticsearch as root. Please run Rally as a non-root user.")
         os.chdir(binary_path)
-        cmd = [io.escape_path(os.path.join(".", "bin", "elasticsearch"))]
-        cmd.extend(["-d", "-p", "pid"])
+        cmd = [
+            io.escape_path(os.path.join(".", "bin", "elasticsearch")),
+            "-d",
+            "-p",
+            "pid",
+        ]
+
         ret = ProcessLauncher._run_subprocess(command_line=" ".join(cmd), env=env)
         if ret != 0:
-            msg = "Daemon startup failed with exit code [{}]".format(ret)
+            msg = f"Daemon startup failed with exit code [{ret}]"
             logging.error(msg)
             raise exceptions.LaunchError(msg)
 

@@ -171,19 +171,13 @@ class EsClientFactory:
                 defined_client_ssl_option = "client_key" if client_key else "client_cert"
                 missing_client_ssl_option = "client_cert" if client_key else "client_key"
                 console.println(
-                    "'{}' is missing from client-options but '{}' has been specified.\n"
-                    "If your Elasticsearch setup requires client certificate verification both need to be supplied.\n"
-                    "Read the documentation at {}\n".format(
-                        missing_client_ssl_option,
-                        defined_client_ssl_option,
-                        console.format.link(doc_link("command_line_reference.html#client-options")),
-                    )
+                    f"""'{missing_client_ssl_option}' is missing from client-options but '{defined_client_ssl_option}' has been specified.\nIf your Elasticsearch setup requires client certificate verification both need to be supplied.\nRead the documentation at {console.format.link(doc_link("command_line_reference.html#client-options"))}\n"""
                 )
+
                 raise exceptions.SystemSetupError(
-                    "Cannot specify '{}' without also specifying '{}' in client-options.".format(
-                        defined_client_ssl_option, missing_client_ssl_option
-                    )
+                    f"Cannot specify '{defined_client_ssl_option}' without also specifying '{missing_client_ssl_option}' in client-options."
                 )
+
             elif client_cert and client_key:
                 self.logger.info("SSL client authentication: on")
                 self.ssl_context.load_cert_chain(certfile=client_cert, keyfile=client_key)
@@ -231,13 +225,13 @@ class EsClientFactory:
 
         import esrally.async_connection
 
+
+
         class LazyJSONSerializer(JSONSerializer):
             def loads(self, s):
                 meta = RallyAsyncElasticsearch.request_context.get()
-                if "raw_response" in meta:
-                    return io.BytesIO(s)
-                else:
-                    return super().loads(s)
+                return io.BytesIO(s) if "raw_response" in meta else super().loads(s)
+
 
         async def on_request_start(session, trace_config_ctx, params):
             RallyAsyncElasticsearch.on_request_start()
@@ -296,15 +290,14 @@ def wait_for_rest_layer(es, max_attempts=40):
         try:
             # see also WaitForHttpResource in Elasticsearch tests. Contrary to the ES tests we consider the API also
             # available when the cluster status is RED (as long as all required nodes are present)
-            es.cluster.health(wait_for_nodes=">={}".format(expected_node_count))
+            es.cluster.health(wait_for_nodes=f">={expected_node_count}")
             logger.info("REST API is available for >= [%s] nodes after [%s] attempts.", expected_node_count, attempt)
             return True
         except elasticsearch.ConnectionError as e:
             if "SSL: UNKNOWN_PROTOCOL" in str(e):
                 raise exceptions.SystemSetupError("Could not connect to cluster via https. Is this an https endpoint?", e)
-            else:
-                logger.debug("Got connection error on attempt [%s]. Sleeping...", attempt)
-                time.sleep(3)
+            logger.debug("Got connection error on attempt [%s]. Sleeping...", attempt)
+            time.sleep(3)
         except elasticsearch.TransportError as e:
             # cluster block, x-pack not initialized yet, our wait condition is not reached
             if e.status_code in (503, 401, 408):

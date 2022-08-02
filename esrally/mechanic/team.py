@@ -29,17 +29,21 @@ TEAM_FORMAT_VERSION = 1
 
 
 def _path_for(team_root_path, team_member_type):
-    root_path = os.path.join(team_root_path, team_member_type, "v{}".format(TEAM_FORMAT_VERSION))
+    root_path = os.path.join(
+        team_root_path, team_member_type, f"v{TEAM_FORMAT_VERSION}"
+    )
+
     if not os.path.exists(root_path):
-        raise exceptions.SystemSetupError("Path {} for {} does not exist.".format(root_path, team_member_type))
+        raise exceptions.SystemSetupError(
+            f"Path {root_path} for {team_member_type} does not exist."
+        )
+
     return root_path
 
 
 def list_cars(cfg):
     loader = CarLoader(team_path(cfg))
-    cars = []
-    for name in loader.car_names():
-        cars.append(loader.load_car(name))
+    cars = [loader.load_car(name) for name in loader.car_names()]
     # first by type, then by name (we need to run the sort in reverse for that)
     # idiomatic way according to https://docs.python.org/3/howto/sorting.html#sort-stability-and-complex-sorts
     cars = sorted(sorted(cars, key=lambda c: c.name), key=lambda c: c.type)
@@ -48,6 +52,7 @@ def list_cars(cfg):
 
 
 def load_car(repo, name, car_params=None):
+
     class Component:
         def __init__(self, root_path, entry_point):
             self.root_path = root_path
@@ -69,25 +74,29 @@ def load_car(repo, name, car_params=None):
             if BootstrapHookHandler(Component(root_path=p, entry_point=Car.entry_point)).can_load():
                 if not root_path:
                     root_path = p
-                # multiple cars are based on the same hook
                 elif root_path != p:
-                    raise exceptions.SystemSetupError("Invalid car: {}. Multiple bootstrap hooks are forbidden.".format(name))
-        all_config_base_vars.update(descriptor.config_base_variables)
-        all_car_vars.update(descriptor.variables)
+                    raise exceptions.SystemSetupError(
+                        f"Invalid car: {name}. Multiple bootstrap hooks are forbidden."
+                    )
 
-    if len(all_config_paths) == 0:
-        raise exceptions.SystemSetupError("At least one config base is required for car {}".format(name))
+        all_config_base_vars |= descriptor.config_base_variables
+        all_car_vars |= descriptor.variables
+
+    if not all_config_paths:
+        raise exceptions.SystemSetupError(
+            f"At least one config base is required for car {name}"
+        )
+
     variables = {}
     # car variables *always* take precedence over config base variables
-    variables.update(all_config_base_vars)
+    variables |= all_config_base_vars
     variables.update(all_car_vars)
 
     return Car(name, root_path, all_config_paths, variables)
 
 
 def list_plugins(cfg):
-    plugins = PluginLoader(team_path(cfg)).plugins()
-    if plugins:
+    if plugins := PluginLoader(team_path(cfg)).plugins():
         console.println("Available Elasticsearch plugins:\n")
         console.println(tabulate.tabulate([[p.name, p.config] for p in plugins], headers=["Name", "Configuration"]))
     else:
@@ -117,26 +126,24 @@ def load_plugins(repo, plugin_names, plugin_params=None):
 
 
 def team_path(cfg):
-    root_path = cfg.opts("mechanic", "team.path", mandatory=False)
-    if root_path:
+    if root_path := cfg.opts("mechanic", "team.path", mandatory=False):
         return root_path
-    else:
-        distribution_version = cfg.opts("mechanic", "distribution.version", mandatory=False)
-        repo_name = cfg.opts("mechanic", "repository.name")
-        repo_revision = cfg.opts("mechanic", "repository.revision")
-        offline = cfg.opts("system", "offline.mode")
-        remote_url = cfg.opts("teams", "%s.url" % repo_name, mandatory=False)
-        root = cfg.opts("node", "root.dir")
-        team_repositories = cfg.opts("mechanic", "team.repository.dir")
-        teams_dir = os.path.join(root, team_repositories)
+    distribution_version = cfg.opts("mechanic", "distribution.version", mandatory=False)
+    repo_name = cfg.opts("mechanic", "repository.name")
+    repo_revision = cfg.opts("mechanic", "repository.revision")
+    offline = cfg.opts("system", "offline.mode")
+    remote_url = cfg.opts("teams", f"{repo_name}.url", mandatory=False)
+    root = cfg.opts("node", "root.dir")
+    team_repositories = cfg.opts("mechanic", "team.repository.dir")
+    teams_dir = os.path.join(root, team_repositories)
 
-        current_team_repo = repo.RallyRepository(remote_url, teams_dir, repo_name, "teams", offline)
-        if repo_revision:
-            current_team_repo.checkout(repo_revision)
-        else:
-            current_team_repo.update(distribution_version)
-            cfg.add(config.Scope.applicationOverride, "mechanic", "repository.revision", current_team_repo.revision)
-        return current_team_repo.repo_dir
+    current_team_repo = repo.RallyRepository(remote_url, teams_dir, repo_name, "teams", offline)
+    if repo_revision:
+        current_team_repo.checkout(repo_revision)
+    else:
+        current_team_repo.update(distribution_version)
+        cfg.add(config.Scope.applicationOverride, "mechanic", "repository.revision", current_team_repo.revision)
+    return current_team_repo.repo_dir
 
 
 class CarLoader:
@@ -156,12 +163,15 @@ class CarLoader:
         return map(__car_name, filter(__is_car, os.listdir(self.cars_dir)))
 
     def _car_file(self, name):
-        return os.path.join(self.cars_dir, "{}.ini".format(name))
+        return os.path.join(self.cars_dir, f"{name}.ini")
 
     def load_car(self, name, car_params=None):
         car_config_file = self._car_file(name)
         if not io.exists(car_config_file):
-            raise exceptions.SystemSetupError("Unknown car [{}]. List the available cars with {} list cars.".format(name, PROGRAM_NAME))
+            raise exceptions.SystemSetupError(
+                f"Unknown car [{name}]. List the available cars with {PROGRAM_NAME} list cars."
+            )
+
         config = self._config_loader(car_config_file)
         root_paths = []
         config_paths = []
@@ -180,7 +190,7 @@ class CarLoader:
                     self._copy_section(base_config, "variables", config_base_vars)
 
         # it's possible that some cars don't have a config base, e.g. mixins which only override variables
-        if len(config_paths) == 0:
+        if not config_paths:
             self.logger.info("Car [%s] does not define any config paths. Assuming that it is used as a mixin.", name)
         variables = self._copy_section(config, "variables", {})
         # add all car params here to override any defaults
@@ -245,10 +255,7 @@ class Car:
         """
         if variables is None:
             variables = {}
-        if isinstance(names, str):
-            self.names = [names]
-        else:
-            self.names = names
+        self.names = [names] if isinstance(names, str) else names
         self.root_path = root_path
         self.config_paths = config_paths
         self.variables = variables
@@ -257,7 +264,9 @@ class Car:
         try:
             return self.variables[name]
         except KeyError:
-            raise exceptions.SystemSetupError('Car "{}" requires config key "{}"'.format(self.name, name))
+            raise exceptions.SystemSetupError(
+                f'Car "{self.name}" requires config key "{name}"'
+            )
 
     @property
     def name(self):
@@ -313,7 +322,7 @@ class PluginLoader:
         return configured_plugins
 
     def _plugin_file(self, name, config):
-        return os.path.join(self._plugin_root_path(name), "%s.ini" % config)
+        return os.path.join(self._plugin_root_path(name), f"{config}.ini")
 
     def _plugin_root_path(self, name):
         return os.path.join(self.plugins_root_path, self._plugin_name_to_file(name))
@@ -342,22 +351,18 @@ class PluginLoader:
         # used to determine whether this is a core plugin
         core_plugin = self._core_plugin(name)
         if not config_names:
-            # maybe we only have a config folder but nothing else (e.g. if there is only an install hook)
             if io.exists(root_path):
                 return PluginDescriptor(
                     name=name, core_plugin=core_plugin is not None, config=config_names, root_path=root_path, variables=plugin_params
                 )
-            else:
-                if core_plugin:
-                    return core_plugin
-                # If we just have a plugin name then we assume that this is a community plugin and the user has specified a download URL
-                else:
-                    self.logger.info(
-                        "The plugin [%s] is neither a configured nor an official plugin. Assuming that this is a community "
-                        "plugin not requiring any configuration and you have set a proper download URL.",
-                        name,
-                    )
-                    return PluginDescriptor(name, variables=plugin_params)
+            if core_plugin:
+                return core_plugin
+            self.logger.info(
+                "The plugin [%s] is neither a configured nor an official plugin. Assuming that this is a community "
+                "plugin not requiring any configuration and you have set a proper download URL.",
+                name,
+            )
+            return PluginDescriptor(name, variables=plugin_params)
         else:
             variables = {}
             config_paths = []
@@ -396,11 +401,14 @@ class PluginLoader:
                         variables[k] = v
                 # add all plugin params here to override any defaults
                 if plugin_params:
-                    variables.update(plugin_params)
+                    variables |= plugin_params
 
             # maybe one of the configs is really just for providing variables. However, we still require one config base overall.
-            if len(config_paths) == 0:
-                raise exceptions.SystemSetupError("At least one config base is required for plugin [%s]" % name)
+            if not config_paths:
+                raise exceptions.SystemSetupError(
+                    f"At least one config base is required for plugin [{name}]"
+                )
+
             return PluginDescriptor(
                 name=name,
                 core_plugin=core_plugin is not None,
@@ -428,12 +436,10 @@ class PluginDescriptor:
         self.variables = variables
 
     def __str__(self):
-        return "Plugin descriptor for [%s]" % self.name
+        return f"Plugin descriptor for [{self.name}]"
 
     def __repr__(self):
-        r = []
-        for prop, value in vars(self).items():
-            r.append("%s = [%s]" % (prop, repr(value)))
+        r = [f"{prop} = [{repr(value)}]" for prop, value in vars(self).items()]
         return ", ".join(r)
 
     def __hash__(self):
@@ -448,10 +454,7 @@ class BootstrapPhase(Enum):
 
     @classmethod
     def valid(cls, name):
-        for n in BootstrapPhase.names():
-            if n == name:
-                return True
-        return False
+        return any(n == name for n in BootstrapPhase.names())
 
     @classmethod
     def names(cls):
@@ -489,14 +492,17 @@ class BootstrapHookHandler:
             # just pass our own exceptions transparently.
             raise
         except BaseException:
-            msg = "Could not load bootstrap hooks in [{}]".format(self.loader.root_path)
+            msg = f"Could not load bootstrap hooks in [{self.loader.root_path}]"
             self.logger.exception(msg)
             raise exceptions.SystemSetupError(msg)
 
     def register(self, phase, hook):
         self.logger.info("Registering bootstrap hook [%s] for phase [%s] in component [%s]", hook.__name__, phase, self.component.name)
         if not BootstrapPhase.valid(phase):
-            raise exceptions.SystemSetupError("Unknown bootstrap phase [{}]. Valid phases are: {}.".format(phase, BootstrapPhase.names()))
+            raise exceptions.SystemSetupError(
+                f"Unknown bootstrap phase [{phase}]. Valid phases are: {BootstrapPhase.names()}."
+            )
+
         if phase not in self.hooks:
             self.hooks[phase] = []
         self.hooks[phase].append(hook)

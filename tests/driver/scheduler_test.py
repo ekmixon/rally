@@ -30,7 +30,7 @@ class SchedulerTestCase(TestCase):
     def assertThroughputEquals(self, sched, expected_average_throughput, msg="", relative_delta=0.05):
         expected_average_rate = 1 / expected_average_throughput
         sum = 0
-        for _ in range(0, SchedulerTestCase.ITERATIONS):
+        for _ in range(SchedulerTestCase.ITERATIONS):
             tn = sched.next(0)
             # schedule must not go backwards in time
             self.assertGreaterEqual(tn, 0, msg)

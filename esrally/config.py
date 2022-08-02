@@ -57,10 +57,10 @@ class ConfigFile:
 
     def store_default_config(self, template_path=None):
         io.ensure_dir(self.config_dir)
-        if template_path:
-            source_path = template_path
-        else:
-            source_path = io.normalize_path(os.path.join(os.path.dirname(__file__), "resources", "rally.ini"))
+        source_path = template_path or io.normalize_path(
+            os.path.join(os.path.dirname(__file__), "resources", "rally.ini")
+        )
+
         with open(self.location, "wt", encoding="utf-8") as target:
             with open(source_path, "rt", encoding="utf-8") as src:
                 contents = src.read()
@@ -74,7 +74,7 @@ class ConfigFile:
     def backup(self):
         config_file = self.location
         logging.getLogger(__name__).info("Creating a backup of the current config file at [%s].", config_file)
-        shutil.copyfile(config_file, "{}.bak".format(config_file))
+        shutil.copyfile(config_file, f"{config_file}.bak")
 
     @property
     def config_dir(self):
@@ -82,11 +82,8 @@ class ConfigFile:
 
     @property
     def location(self):
-        if self.config_name:
-            config_name_suffix = "-{}".format(self.config_name)
-        else:
-            config_name_suffix = ""
-        return os.path.join(self.config_dir, "rally{}.ini".format(config_name_suffix))
+        config_name_suffix = f"-{self.config_name}" if self.config_name else ""
+        return os.path.join(self.config_dir, f"rally{config_name_suffix}.ini")
 
 
 def auto_load_local_config(base_config, additional_sections=None, config_file_class=ConfigFile, **kwargs):
@@ -193,11 +190,12 @@ class Config:
         scopes_per_key = {}
         for k, v in self._opts.items():
             scope, source_section, key = k
-            if source_section == section:
-                # check whether it's a new key OR we need to override
-                if key not in opts_in_section or scopes_per_key[key].value < scope.value:
-                    opts_in_section[key] = v
-                    scopes_per_key[key] = scope
+            if source_section == section and (
+                key not in opts_in_section
+                or scopes_per_key[key].value < scope.value
+            ):
+                opts_in_section[key] = v
+                scopes_per_key[key] = scope
         return opts_in_section
 
     def exists(self, section, key):

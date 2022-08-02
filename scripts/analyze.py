@@ -48,7 +48,7 @@ def create_plot():
 
 
 def present(a_plot, name):
-    a_plot.savefig("%s.png" % name, bbox_inches="tight")
+    a_plot.savefig(f"{name}.png", bbox_inches="tight")
     # plt.show()  # alternatively only show it
     # explicitly close to free resources
     a_plot.close()
@@ -104,14 +104,14 @@ def plot_service_time(raw_data, label_key):
 
         ax.set_ylabel("Service Time [ms]")
         ax.set_xlabel("Percentile")
-        ax.set_title("Service Time of %s" % op)
+        ax.set_title(f"Service Time of {op}")
         ax.set_ylim(ymin=0)
 
         box = ax.get_position()
         ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
         ax.legend(legend_handles, legend_labels, loc="center left", bbox_to_anchor=(1, 0.5))
 
-        present(plt, "service_time_%s" % op)
+        present(plt, f"service_time_{op}")
 
 
 def plot_throughput(raw_data, label_key):
@@ -135,13 +135,13 @@ def plot_throughput(raw_data, label_key):
                 }
             )
 
+    width = 0.35
     for op, results in throughput_per_op.items():
         _, ax = create_plot()
         x_tick_labels = []
         throughput = []
         min_throughput = []
         max_throughput = []
-        width = 0.35
         unit = ""
 
         for candidate in results:
@@ -165,11 +165,11 @@ def plot_throughput(raw_data, label_key):
         ax.bar(indices, throughput, width, yerr=[min_throughput, max_throughput])
         ax.set_xticks(indices)
         ax.set_xticklabels(x_tick_labels)
-        ax.set_ylabel("Throughput [%s]" % unit)
-        ax.set_title("Throughput of %s" % op)
+        ax.set_ylabel(f"Throughput [{unit}]")
+        ax.set_title(f"Throughput of {op}")
         ax.set_ylim(ymin=0)
 
-        present(plt, "throughput_%s" % op)
+        present(plt, f"throughput_{op}")
 
 
 def plot_gc_times(raw_data, label_key):

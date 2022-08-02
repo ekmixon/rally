@@ -27,7 +27,7 @@ PROGRAM_NAME = os.getenv("RALLY_ALTERNATIVE_BINARY_NAME", os.path.basename(sys.a
 if __version__.endswith("dev0"):
     DOC_LINK = "https://esrally.readthedocs.io/en/latest/"
 else:
-    DOC_LINK = "https://esrally.readthedocs.io/en/%s/" % __version__
+    DOC_LINK = f"https://esrally.readthedocs.io/en/{__version__}/"
 
 
 FORUM_LINK = "https://discuss.elastic.co/tags/c/elastic-stack/elasticsearch/rally"

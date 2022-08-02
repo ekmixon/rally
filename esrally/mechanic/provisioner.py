@@ -114,9 +114,9 @@ def _render_template(env, variables, file_name):
         # force a new line at the end. Jinja seems to remove it.
         return template.render(variables) + "\n"
     except jinja2.exceptions.TemplateSyntaxError as e:
-        raise exceptions.InvalidSyntax("%s in %s" % (str(e), file_name))
+        raise exceptions.InvalidSyntax(f"{str(e)} in {file_name}")
     except BaseException as e:
-        raise exceptions.SystemSetupError("%s in %s" % (str(e), file_name))
+        raise exceptions.SystemSetupError(f"{str(e)} in {file_name}")
 
 
 def plain_text(file):
@@ -226,7 +226,7 @@ class BareProvisioner:
                     mandatory_plugins.append(installer.plugin_name)
             except (TypeError, exceptions.InvalidSyntax):
                 mandatory_plugins.append(installer.plugin_name)
-            plugin_variables.update(installer.variables)
+            plugin_variables |= installer.variables
 
         cluster_settings = {}
         if mandatory_plugins:
@@ -237,7 +237,7 @@ class BareProvisioner:
             cluster_settings["plugin.mandatory"] = mandatory_plugins
 
         provisioner_vars = {}
-        provisioner_vars.update(self.es_installer.variables)
+        provisioner_vars |= self.es_installer.variables
         provisioner_vars.update(plugin_variables)
         provisioner_vars["cluster_settings"] = cluster_settings
 
@@ -322,7 +322,7 @@ class ElasticsearchInstaller:
             "install_root_path": self.es_home_path,
         }
         variables = {}
-        variables.update(self.car.variables)
+        variables |= self.car.variables
         variables.update(defaults)
         return variables
 
@@ -331,16 +331,17 @@ class ElasticsearchInstaller:
         return self.car.config_paths
 
     def _data_paths(self):
-        if "data_paths" in self.car.variables:
-            data_paths = self.car.variables["data_paths"]
-            if isinstance(data_paths, str):
-                return [data_paths]
-            elif isinstance(data_paths, list):
-                return data_paths
-            else:
-                raise exceptions.SystemSetupError("Expected [data_paths] to be either a string or a list but was [%s]." % type(data_paths))
-        else:
+        if "data_paths" not in self.car.variables:
             return [os.path.join(self.es_home_path, "data")]
+        data_paths = self.car.variables["data_paths"]
+        if isinstance(data_paths, str):
+            return [data_paths]
+        elif isinstance(data_paths, list):
+            return data_paths
+        else:
+            raise exceptions.SystemSetupError(
+                f"Expected [data_paths] to be either a string or a list but was [{type(data_paths)}]."
+            )
 
 
 class PluginInstaller:
@@ -367,13 +368,15 @@ class PluginInstaller:
             self.logger.info("Successfully installed [%s].", self.plugin_name)
         elif return_code == 64:
             # most likely this is an unknown plugin
-            raise exceptions.SystemSetupError("Unknown plugin [%s]" % self.plugin_name)
+            raise exceptions.SystemSetupError(f"Unknown plugin [{self.plugin_name}]")
         elif return_code == 74:
-            raise exceptions.SupplyError("I/O error while trying to install [%s]" % self.plugin_name)
+            raise exceptions.SupplyError(
+                f"I/O error while trying to install [{self.plugin_name}]"
+            )
+
         else:
             raise exceptions.RallyError(
-                "Unknown error while trying to install [%s] (installer return code [%s]). Please check the logs."
-                % (self.plugin_name, str(return_code))
+                f"Unknown error while trying to install [{self.plugin_name}] (installer return code [{str(return_code)}]). Please check the logs."
             )
 
     def invoke_install_hook(self, phase, variables):
@@ -436,7 +439,7 @@ class DockerProvisioner:
         }
 
         self.config_vars = {}
-        self.config_vars.update(self.car.variables)
+        self.config_vars |= self.car.variables
         self.config_vars.update(provisioner_defaults)
 
     def prepare(self, binary):
@@ -520,9 +523,9 @@ class DockerProvisioner:
 
             return template.render()
         except jinja2.exceptions.TemplateSyntaxError as e:
-            raise exceptions.InvalidSyntax("%s in %s" % (str(e), template_name))
+            raise exceptions.InvalidSyntax(f"{str(e)} in {template_name}")
         except BaseException as e:
-            raise exceptions.SystemSetupError("%s in %s" % (str(e), template_name))
+            raise exceptions.SystemSetupError(f"{str(e)} in {template_name}")
 
     def _render_template_from_file(self, variables):
         compose_file = os.path.join(self.rally_root, "resources", "docker-compose.yml.j2")

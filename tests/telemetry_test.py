@@ -413,12 +413,7 @@ class CcrStatsTests(TestCase):
                 "wrong_cluster_name": ["follower"],
             },
         }
-        with self.assertRaisesRegex(
-            exceptions.SystemSetupError,
-            r"The telemetry parameter 'ccr-stats-indices' must be a JSON Object with keys matching "
-            r"the cluster names \[{}] specified in --target-hosts "
-            r"but it had \[wrong_cluster_name\].".format(",".join(sorted(clients.keys()))),
-        ):
+        with self.assertRaisesRegex(exceptions.SystemSetupError, f"""The telemetry parameter 'ccr-stats-indices' must be a JSON Object with keys matching the cluster names \[{",".join(sorted(clients.keys()))}] specified in --target-hosts but it had \[wrong_cluster_name\]."""):
             telemetry.CcrStats(telemetry_params, clients, metrics_store)
 
 
@@ -2765,12 +2760,7 @@ class TransformStatsTests(TestCase):
         cfg = create_config()
         metrics_store = metrics.EsMetricsStore(cfg)
         telemetry_params = {"transform-stats-transforms": {"default": ["leader"], "wrong_cluster_name": ["follower"]}}
-        with self.assertRaisesRegex(
-            exceptions.SystemSetupError,
-            r"The telemetry parameter 'transform-stats-transforms' must be a JSON Object with keys matching "
-            r"the cluster names \[{}] specified in --target-hosts "
-            r"but it had \[wrong_cluster_name\].".format(",".join(sorted(clients.keys()))),
-        ):
+        with self.assertRaisesRegex(exceptions.SystemSetupError, f"""The telemetry parameter 'transform-stats-transforms' must be a JSON Object with keys matching the cluster names \[{",".join(sorted(clients.keys()))}] specified in --target-hosts but it had \[wrong_cluster_name\]."""):
             telemetry.TransformStats(telemetry_params, clients, metrics_store)
 
 
@@ -2784,7 +2774,7 @@ class TransformStatsRecorderTests(TestCase):
         count = random.randrange(1, 10)
         transforms = []
 
-        for i in range(0, count):
+        for i in range(count):
             transform = {
                 "id": transform_id_prefix + str(i),
                 "state": random.choice(["stopped", "indexing", "started", "failed"]),
@@ -3503,9 +3493,11 @@ class IndexStatsTests(TestCase):
         primary_shards = []
         for shards in response["indices"].values():
             for shard in shards["shards"].values():
-                for shard_metrics in shard:
-                    if shard_metrics["routing"]["primary"]:
-                        primary_shards.append(shard_metrics)
+                primary_shards.extend(
+                    shard_metrics
+                    for shard_metrics in shard
+                    if shard_metrics["routing"]["primary"]
+                )
 
         metrics_store_put_doc.assert_has_calls(
             [

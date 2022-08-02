@@ -39,7 +39,7 @@ def create(cfg, sources, distribution, car, plugins=None):
     revisions = _extract_revisions(cfg.opts("mechanic", "source.revision", mandatory=sources))
     distribution_version = cfg.opts("mechanic", "distribution.version", mandatory=False)
     supply_requirements = _supply_requirements(sources, distribution, plugins, revisions, distribution_version)
-    build_needed = any([build for _, _, build in supply_requirements.values()])
+    build_needed = any(build for _, _, build in supply_requirements.values())
     es_supplier_type, es_version, _ = supply_requirements["elasticsearch"]
     src_config = cfg.all_opts("source")
     suppliers = []
@@ -63,10 +63,10 @@ def create(cfg, sources, distribution, car, plugins=None):
     distributions_root = os.path.join(cfg.opts("node", "root.dir"), cfg.opts("source", "distribution.dir"))
     dist_cfg = {}
     # car / plugin defines defaults...
-    dist_cfg.update(car.variables)
+    dist_cfg |= car.variables
     for plugin in plugins:
         for k, v in plugin.variables.items():
-            dist_cfg["plugin_{}_{}".format(plugin.name, k)] = v
+            dist_cfg[f"plugin_{plugin.name}_{k}"] = v
     # ... but the user can override it in rally.ini
     dist_cfg.update(cfg.all_opts("distributions"))
 
@@ -120,9 +120,9 @@ def create(cfg, sources, distribution, car, plugins=None):
                 plugin_supplier = ExternalPluginSourceSupplier(plugin, plugin_version, _src_dir(cfg, mandatory=False), src_config, builder)
             else:
                 raise exceptions.RallyError(
-                    "Plugin %s can neither be treated as core nor as external plugin. Requirements: %s"
-                    % (plugin.name, supply_requirements[plugin.name])
+                    f"Plugin {plugin.name} can neither be treated as core nor as external plugin. Requirements: {supply_requirements[plugin.name]}"
                 )
+
 
             if caching_enabled:
                 plugin_file_resolver = PluginFileNameResolver(plugin.name, plugin_version)
@@ -130,7 +130,10 @@ def create(cfg, sources, distribution, car, plugins=None):
             suppliers.append(plugin_supplier)
         else:
             logger.info("Adding plugin distribution supplier for [%s].", plugin.name)
-            assert repo is not None, "Cannot benchmark plugin %s from a distribution version but Elasticsearch from sources" % plugin.name
+            assert (
+                repo is not None
+            ), f"Cannot benchmark plugin {plugin.name} from a distribution version but Elasticsearch from sources"
+
             suppliers.append(PluginDistributionSupplier(repo, plugin))
 
     return CompositeSupplier(suppliers)
@@ -151,45 +154,48 @@ def _required_revision(revisions, key, name=None):
         return revisions[key]
     except KeyError:
         n = name if name is not None else key
-        raise exceptions.SystemSetupError("No revision specified for %s" % n)
+        raise exceptions.SystemSetupError(f"No revision specified for {n}")
 
 
 def _supply_requirements(sources, distribution, plugins, revisions, distribution_version):
     # per artifact (elasticsearch or a specific plugin):
     #   * key: artifact
     #   * value: ("source" | "distribution", distribution_version | revision, build = True | False)
-    supply_requirements = {}
+    supply_requirements = {
+        "elasticsearch": (
+            "source",
+            _required_revision(revisions, "elasticsearch", "Elasticsearch"),
+            True,
+        )
+        if "elasticsearch" in revisions and sources
+        else ("distribution", _required_version(distribution_version), False)
+    }
 
-    # can only build Elasticsearch with source-related pipelines -> ignore revision in that case
-    if "elasticsearch" in revisions and sources:
-        supply_requirements["elasticsearch"] = ("source", _required_revision(revisions, "elasticsearch", "Elasticsearch"), True)
-    else:
-        # no revision given or explicitly specified that it's from a distribution -> must use a distribution
-        supply_requirements["elasticsearch"] = ("distribution", _required_version(distribution_version), False)
 
     for plugin in plugins:
         if plugin.core_plugin:
             # core plugins are entirely dependent upon Elasticsearch.
             supply_requirements[plugin.name] = supply_requirements["elasticsearch"]
-        else:
-            # allow catch-all only if we're generally building from sources. If it is mixed, the user should tell explicitly.
-            if plugin.name in revisions or ("all" in revisions and sources):
+        elif plugin.name in revisions or ("all" in revisions and sources):
                 # be a bit more lenient when checking for plugin revisions. This allows users to specify `--revision="current"` and
                 # rely on Rally to do the right thing.
-                try:
-                    plugin_revision = revisions[plugin.name]
-                except KeyError:
-                    # maybe we can use the catch-all revision (only if it's not a git revision)
-                    plugin_revision = revisions.get("all")
-                    if not plugin_revision or SourceRepository.is_commit_hash(plugin_revision):
-                        raise exceptions.SystemSetupError("No revision specified for plugin [%s]." % plugin.name)
-                    else:
-                        logging.getLogger(__name__).info(
-                            "Revision for [%s] is not explicitly defined. Using catch-all revision [%s].", plugin.name, plugin_revision
-                        )
-                supply_requirements[plugin.name] = ("source", plugin_revision, True)
-            else:
-                supply_requirements[plugin.name] = (distribution, _required_version(distribution_version), False)
+            try:
+                plugin_revision = revisions[plugin.name]
+            except KeyError:
+                # maybe we can use the catch-all revision (only if it's not a git revision)
+                plugin_revision = revisions.get("all")
+                if not plugin_revision or SourceRepository.is_commit_hash(plugin_revision):
+                    raise exceptions.SystemSetupError(
+                        f"No revision specified for plugin [{plugin.name}]."
+                    )
+
+                else:
+                    logging.getLogger(__name__).info(
+                        "Revision for [%s] is not explicitly defined. Using catch-all revision [%s].", plugin.name, plugin_revision
+                    )
+            supply_requirements[plugin.name] = ("source", plugin_revision, True)
+        else:
+            supply_requirements[plugin.name] = (distribution, _required_version(distribution_version), False)
     return supply_requirements
 
 
@@ -236,14 +242,8 @@ def _prune(root_path, max_age_days):
 class TemplateRenderer:
     def __init__(self, version, os_name=None, arch=None):
         self.version = version
-        if os_name is not None:
-            self.os = os_name
-        else:
-            self.os = sysstats.os_name().lower()
-        if arch is not None:
-            self.arch = arch
-        else:
-            self.arch = sysstats.cpu_arch().lower()
+        self.os = os_name if os_name is not None else sysstats.os_name().lower()
+        self.arch = arch if arch is not None else sysstats.cpu_arch().lower()
 
     def render(self, template):
         substitutions = {"{{VERSION}}": self.version, "{{OSNAME}}": self.os, "{{ARCH}}": self.arch}
@@ -326,12 +326,10 @@ class CachedSourceSupplier:
         maybe_an_artifact = os.path.join(self.distributions_root, self.file_name)
         if os.path.exists(maybe_an_artifact):
             self.cached_path = maybe_an_artifact
-        else:
-            resolved_revision = self.source_supplier.fetch()
-            if resolved_revision:
-                # ensure we use the resolved revision for rendering the artifact
-                self.file_resolver.revision = resolved_revision
-                self.cached_path = os.path.join(self.distributions_root, self.file_name)
+        elif resolved_revision := self.source_supplier.fetch():
+            # ensure we use the resolved revision for rendering the artifact
+            self.file_resolver.revision = resolved_revision
+            self.cached_path = os.path.join(self.distributions_root, self.file_name)
 
     def prepare(self):
         if not self.cached:
@@ -412,17 +410,20 @@ class PluginFileNameResolver:
 
 class ExternalPluginSourceSupplier:
     def __init__(self, plugin, revision, src_dir, src_config, builder):
-        assert not plugin.core_plugin, "Plugin %s is a core plugin" % plugin.name
+        assert not plugin.core_plugin, f"Plugin {plugin.name} is a core plugin"
         self.plugin = plugin
         self.revision = revision
         # may be None if and only if the user has set an absolute plugin directory
         self.src_dir = src_dir
         self.src_config = src_config
         self.builder = builder
-        subdir_cfg_key = "plugin.%s.src.subdir" % self.plugin.name
-        dir_cfg_key = "plugin.%s.src.dir" % self.plugin.name
+        subdir_cfg_key = f"plugin.{self.plugin.name}.src.subdir"
+        dir_cfg_key = f"plugin.{self.plugin.name}.src.dir"
         if dir_cfg_key in self.src_config and subdir_cfg_key in self.src_config:
-            raise exceptions.SystemSetupError("Can only specify one of %s and %s but both are set." % (dir_cfg_key, subdir_cfg_key))
+            raise exceptions.SystemSetupError(
+                f"Can only specify one of {dir_cfg_key} and {subdir_cfg_key} but both are set."
+            )
+
         elif dir_cfg_key in self.src_config:
             self.plugin_src_dir = _config_value(self.src_config, dir_cfg_key)
             # we must build directly in the plugin dir, not relative to Elasticsearch
@@ -431,7 +432,9 @@ class ExternalPluginSourceSupplier:
             self.plugin_src_dir = os.path.join(self.src_dir, _config_value(self.src_config, subdir_cfg_key))
             self.override_build_dir = None
         else:
-            raise exceptions.SystemSetupError("Neither %s nor %s are set for plugin %s." % (dir_cfg_key, subdir_cfg_key, self.plugin.name))
+            raise exceptions.SystemSetupError(
+                f"Neither {dir_cfg_key} nor {subdir_cfg_key} are set for plugin {self.plugin.name}."
+            )
 
     @staticmethod
     def can_handle(plugin):
@@ -439,22 +442,31 @@ class ExternalPluginSourceSupplier:
 
     def fetch(self):
         # optional (but then source code is assumed to be available locally)
-        plugin_remote_url = self.src_config.get("plugin.%s.remote.repo.url" % self.plugin.name)
+        plugin_remote_url = self.src_config.get(
+            f"plugin.{self.plugin.name}.remote.repo.url"
+        )
+
         return SourceRepository(self.plugin.name, plugin_remote_url, self.plugin_src_dir).fetch(self.revision)
 
     def prepare(self):
         if self.builder:
-            command = _config_value(self.src_config, "plugin.{}.build.command".format(self.plugin.name))
+            command = _config_value(
+                self.src_config, f"plugin.{self.plugin.name}.build.command"
+            )
+
             self.builder.build([command], override_src_dir=self.override_build_dir)
 
     def add(self, binaries):
         binaries[self.plugin.name] = self.resolve_binary()
 
     def resolve_binary(self):
-        artifact_path = _config_value(self.src_config, "plugin.%s.build.artifact.subdir" % self.plugin.name)
+        artifact_path = _config_value(
+            self.src_config, f"plugin.{self.plugin.name}.build.artifact.subdir"
+        )
+
         try:
-            name = glob.glob("%s/%s/*.zip" % (self.plugin_src_dir, artifact_path))[0]
-            return "file://%s" % name
+            name = glob.glob(f"{self.plugin_src_dir}/{artifact_path}/*.zip")[0]
+            return f"file://{name}"
         except IndexError:
             raise SystemSetupError(
                 "Couldn't find a plugin zip file for [%s]. Please run Rally with the pipeline 'from-sources'." % self.plugin.name
@@ -463,7 +475,7 @@ class ExternalPluginSourceSupplier:
 
 class CorePluginSourceSupplier:
     def __init__(self, plugin, es_src_dir, builder):
-        assert plugin.core_plugin, "Plugin %s is not a core plugin" % plugin.name
+        assert plugin.core_plugin, f"Plugin {plugin.name} is not a core plugin"
         self.plugin = plugin
         self.es_src_dir = es_src_dir
         self.builder = builder
@@ -478,15 +490,18 @@ class CorePluginSourceSupplier:
 
     def prepare(self):
         if self.builder:
-            self.builder.build(["./gradlew :plugins:{}:assemble".format(self.plugin.name)])
+            self.builder.build([f"./gradlew :plugins:{self.plugin.name}:assemble"])
 
     def add(self, binaries):
         binaries[self.plugin.name] = self.resolve_binary()
 
     def resolve_binary(self):
         try:
-            name = glob.glob("%s/plugins/%s/build/distributions/*.zip" % (self.es_src_dir, self.plugin.name))[0]
-            return "file://%s" % name
+            name = glob.glob(
+                f"{self.es_src_dir}/plugins/{self.plugin.name}/build/distributions/*.zip"
+            )[0]
+
+            return f"file://{name}"
         except IndexError:
             raise SystemSetupError(
                 "Couldn't find a plugin zip file for [%s]. Please run Rally with the pipeline 'from-sources'." % self.plugin.name
@@ -510,7 +525,7 @@ class ElasticsearchDistributionSupplier:
         if not os.path.isfile(distribution_path) or not self.repo.cache:
             try:
                 self.logger.info("Starting download of Elasticsearch [%s]", self.version)
-                progress = net.Progress("[INFO] Downloading Elasticsearch %s" % self.version)
+                progress = net.Progress(f"[INFO] Downloading Elasticsearch {self.version}")
                 net.download(download_url, distribution_path, progress_indicator=progress)
                 progress.finish()
                 self.logger.info("Successfully downloaded Elasticsearch [%s].", self.version)
@@ -544,10 +559,7 @@ class PluginDistributionSupplier:
         pass
 
     def add(self, binaries):
-        # if we have multiple plugin configurations for a plugin we will override entries here but as this is always the same
-        # key-value pair this is ok.
-        plugin_url = self.repo.plugin_download_url(self.plugin.name)
-        if plugin_url:
+        if plugin_url := self.repo.plugin_download_url(self.plugin.name):
             binaries[self.plugin.name] = plugin_url
 
 
@@ -556,7 +568,7 @@ def _config_value(src_config, key):
         return src_config[key]
     except KeyError:
         raise exceptions.SystemSetupError(
-            "Mandatory config key [%s] is undefined. Please add it in the [source] section of the config file." % key
+            f"Mandatory config key [{key}] is undefined. Please add it in the [source] section of the config file."
         )
 
 
@@ -566,10 +578,8 @@ def _extract_revisions(revision):
         r = revisions[0]
         if r.startswith("elasticsearch:"):
             r = r[len("elasticsearch:") :]
-        # may as well be just a single plugin
-        m = re.match(REVISION_PATTERN, r)
-        if m:
-            return {m.group(1): m.group(2)}
+        if m := re.match(REVISION_PATTERN, r):
+            return {m[1]: m[2]}
         else:
             return {
                 "elasticsearch": r,
@@ -579,11 +589,13 @@ def _extract_revisions(revision):
     else:
         results = {}
         for r in revisions:
-            m = re.match(REVISION_PATTERN, r)
-            if m:
-                results[m.group(1)] = m.group(2)
+            if m := re.match(REVISION_PATTERN, r):
+                results[m[1]] = m[2]
             else:
-                raise exceptions.SystemSetupError("Revision [%s] does not match expected format [name:revision]." % r)
+                raise exceptions.SystemSetupError(
+                    f"Revision [{r}] does not match expected format [name:revision]."
+                )
+
         return results
 
 
@@ -614,7 +626,9 @@ class SourceRepository:
             elif os.path.isdir(self.src_dir) and may_skip_init:
                 self.logger.info("Skipping repository initialization for %s.", self.name)
             else:
-                exceptions.SystemSetupError("A remote repository URL is mandatory for %s" % self.name)
+                exceptions.SystemSetupError(
+                    f"A remote repository URL is mandatory for {self.name}"
+                )
 
     def _update(self, revision):
         if self.has_remote() and revision == "latest":
@@ -677,17 +691,21 @@ class Builder:
         log_file = os.path.join(self.log_dir, "build.log")
 
         # we capture all output to a dedicated build log file
-        build_cmd = "export JAVA_HOME={}; cd {}; {} > {} 2>&1".format(self.java_home, src_dir, command, log_file)
+        build_cmd = f"export JAVA_HOME={self.java_home}; cd {src_dir}; {command} > {log_file} 2>&1"
+
         self.logger.info("Running build command [%s]", build_cmd)
 
         if process.run_subprocess(build_cmd):
-            msg = "Executing '{}' failed. The last 20 lines in the build log file are:\n".format(command)
-            msg += "=========================================================================================================\n"
+            msg = (
+                f"Executing '{command}' failed. The last 20 lines in the build log file are:\n"
+                + "=========================================================================================================\n"
+            )
+
             with open(log_file, "r", encoding="utf-8") as f:
                 msg += "\t"
                 msg += "\t".join(f.readlines()[-20:])
             msg += "=========================================================================================================\n"
-            msg += "The full build log is available at [{}].".format(log_file)
+            msg += f"The full build log is available at [{log_file}]."
 
             raise BuildError(msg)
 
@@ -703,11 +721,11 @@ class DistributionRepository:
     def download_url(self):
         # team repo
         if self.runtime_jdk_bundled:
-            default_key = "jdk.bundled.{}_url".format(self.name)
+            default_key = f"jdk.bundled.{self.name}_url"
         else:
-            default_key = "jdk.unbundled.{}_url".format(self.name)
+            default_key = f"jdk.unbundled.{self.name}_url"
         # rally.ini
-        override_key = "{}.url".format(self.name)
+        override_key = f"{self.name}.url"
         return self._url_for(override_key, default_key)
 
     @property
@@ -717,9 +735,9 @@ class DistributionRepository:
 
     def plugin_download_url(self, plugin_name):
         # team repo
-        default_key = "plugin_{}_{}_url".format(plugin_name, self.name)
+        default_key = f"plugin_{plugin_name}_{self.name}_url"
         # rally.ini
-        override_key = "plugin.{}.{}.url".format(plugin_name, self.name)
+        override_key = f"plugin.{plugin_name}.{self.name}.url"
         return self._url_for(override_key, default_key, mandatory=False)
 
     def _url_for(self, user_defined_key, default_key, mandatory=True):
@@ -730,19 +748,24 @@ class DistributionRepository:
                 url_template = self.cfg[default_key]
         except KeyError:
             if mandatory:
-                raise exceptions.SystemSetupError("Neither config key [{}] nor [{}] is defined.".format(user_defined_key, default_key))
+                raise exceptions.SystemSetupError(
+                    f"Neither config key [{user_defined_key}] nor [{default_key}] is defined."
+                )
+
             else:
                 return None
         return self.template_renderer.render(url_template)
 
     @property
     def cache(self):
-        k = "{}.cache".format(self.name)
+        k = f"{self.name}.cache"
         try:
             raw_value = self.cfg[k]
         except KeyError:
-            raise exceptions.SystemSetupError("Mandatory config key [%s] is undefined." % k)
+            raise exceptions.SystemSetupError(f"Mandatory config key [{k}] is undefined.")
         try:
             return convert.to_bool(raw_value)
         except ValueError:
-            raise exceptions.SystemSetupError("Value [%s] for config key [%s] is not a valid boolean value." % (raw_value, k))
+            raise exceptions.SystemSetupError(
+                f"Value [{raw_value}] for config key [{k}] is not a valid boolean value."
+            )

@@ -74,11 +74,10 @@ def create_arg_parser():
     def runtime_jdk(v):
         if v == "bundled":
             return v
-        else:
-            try:
-                return positive_number(v)
-            except argparse.ArgumentTypeError:
-                raise argparse.ArgumentTypeError(f"must be a positive number or 'bundled' but was {v}")
+        try:
+            return positive_number(v)
+        except argparse.ArgumentTypeError:
+            raise argparse.ArgumentTypeError(f"must be a positive number or 'bundled' but was {v}")
 
     def supported_es_version(v):
         if v:
@@ -121,10 +120,9 @@ def create_arg_parser():
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
-        "--version",
-        action="version",
-        version="%(prog)s " + version.version(),
+        "--version", action="version", version=f"%(prog)s {version.version()}"
     )
+
 
     subparsers = parser.add_subparsers(title="subcommands", dest="subcommand", help="")
 
@@ -709,7 +707,9 @@ def dispatch_list(cfg):
     elif what == "elasticsearch-plugins":
         team.list_plugins(cfg)
     else:
-        raise exceptions.SystemSetupError("Cannot list unknown configuration option [%s]" % what)
+        raise exceptions.SystemSetupError(
+            f"Cannot list unknown configuration option [{what}]"
+        )
 
 
 def print_help_on_errors():
@@ -739,18 +739,16 @@ def race(cfg, kill_running_processes=False):
             raise exceptions.UserInterrupted("User has cancelled the benchmark whilst terminating Rally instances.") from None
         except BaseException:
             logger.exception("Could not terminate potentially running Rally instances correctly. Attempting to go on anyway.")
-    else:
-        other_rally_processes = process.find_all_other_rally_processes()
-        if other_rally_processes:
-            pids = [p.pid for p in other_rally_processes]
+    elif other_rally_processes := process.find_all_other_rally_processes():
+        pids = [p.pid for p in other_rally_processes]
 
-            msg = (
-                f"There are other Rally processes running on this machine (PIDs: {pids}) but only one Rally "
-                f"benchmark is allowed to run at the same time.\n\nYou can use --kill-running-processes flag "
-                f"to kill running processes automatically and allow Rally to continue to run a new benchmark. "
-                f"Otherwise, you need to manually kill them."
-            )
-            raise exceptions.RallyError(msg)
+        msg = (
+            f"There are other Rally processes running on this machine (PIDs: {pids}) but only one Rally "
+            f"benchmark is allowed to run at the same time.\n\nYou can use --kill-running-processes flag "
+            f"to kill running processes automatically and allow Rally to continue to run a new benchmark. "
+            f"Otherwise, you need to manually kill them."
+        )
+        raise exceptions.RallyError(msg)
 
     with_actor_system(racecontrol.run, cfg)
 
@@ -763,7 +761,6 @@ def with_actor_system(runnable, cfg):
         actors = actor.bootstrap_actor_system(try_join=already_running, prefer_local_only=not already_running)
         # We can only support remote benchmarks if we have a dedicated daemon that is not only bound to 127.0.0.1
         cfg.add(config.Scope.application, "system", "remote.benchmarking.supported", already_running)
-    # This happens when the admin process could not be started, e.g. because it could not open a socket.
     except thespian.actors.InvalidActorAddress:
         logger.info("Falling back to offline actor system.")
         actor.use_offline_actor_system()
@@ -772,15 +769,14 @@ def with_actor_system(runnable, cfg):
         raise exceptions.UserInterrupted("User has cancelled the benchmark (detected whilst bootstrapping actor system).") from None
     except Exception as e:
         logger.exception("Could not bootstrap actor system.")
-        if str(e) == "Unable to determine valid external socket address.":
-            console.warn(
-                "Could not determine a socket address. Are you running without any network? Switching to degraded mode.", logger=logger
-            )
-            logger.info("Falling back to offline actor system.")
-            actor.use_offline_actor_system()
-            actors = actor.bootstrap_actor_system(try_join=True)
-        else:
+        if str(e) != "Unable to determine valid external socket address.":
             raise
+        console.warn(
+            "Could not determine a socket address. Are you running without any network? Switching to degraded mode.", logger=logger
+        )
+        logger.info("Falling back to offline actor system.")
+        actor.use_offline_actor_system()
+        actors = actor.bootstrap_actor_system(try_join=True)
     try:
         runnable(cfg)
     finally:
@@ -810,22 +806,23 @@ def with_actor_system(runnable, cfg):
                     times_interrupted += 1
                     logger.warning("User interrupted shutdown of internal actor system.")
                     console.info("Please wait a moment for Rally's internal components to shutdown.")
-            if not shutdown_complete and times_interrupted > 0:
-                logger.warning("Terminating after user has interrupted actor system shutdown explicitly for [%d] times.", times_interrupted)
-                console.println("")
-                console.warn("Terminating now at the risk of leaving child processes behind.")
-                console.println("")
-                console.warn("The next race may fail due to an unclean shutdown.")
-                console.println("")
-                console.println(SKULL)
-                console.println("")
-                raise exceptions.UserInterrupted(
-                    f"User has cancelled the benchmark (shutdown not complete as user interrupted " f"{times_interrupted} times)."
-                ) from None
-            elif not shutdown_complete:
-                console.warn(
-                    "Could not terminate all internal processes within timeout. Please check and force-terminate all Rally processes."
-                )
+            if not shutdown_complete:
+                if times_interrupted > 0:
+                    logger.warning("Terminating after user has interrupted actor system shutdown explicitly for [%d] times.", times_interrupted)
+                    console.println("")
+                    console.warn("Terminating now at the risk of leaving child processes behind.")
+                    console.println("")
+                    console.warn("The next race may fail due to an unclean shutdown.")
+                    console.println("")
+                    console.println(SKULL)
+                    console.println("")
+                    raise exceptions.UserInterrupted(
+                        f"User has cancelled the benchmark (shutdown not complete as user interrupted " f"{times_interrupted} times)."
+                    ) from None
+                else:
+                    console.warn(
+                        "Could not terminate all internal processes within timeout. Please check and force-terminate all Rally processes."
+                    )
 
 
 def generate(cfg):
@@ -993,7 +990,7 @@ def dispatch_sub_command(arg_parser, args, cfg):
         return ExitStatus.SUCCESSFUL
     except (exceptions.UserInterrupted, KeyboardInterrupt) as e:
         logging.getLogger(__name__).info("User has cancelled the subcommand [%s].", sub_command, exc_info=e)
-        console.info("Aborted %s. %s" % (sub_command, e))
+        console.info(f"Aborted {sub_command}. {e}")
         return ExitStatus.INTERRUPTED
     except exceptions.RallyError as e:
         logging.getLogger(__name__).exception("Cannot run subcommand [%s].", sub_command)
@@ -1007,13 +1004,13 @@ def dispatch_sub_command(arg_parser, args, cfg):
             else:
                 msg += "\n%s%s" % ("\t" * nesting, str(e))
 
-        console.error("Cannot %s. %s" % (sub_command, msg))
+        console.error(f"Cannot {sub_command}. {msg}")
         console.println("")
         print_help_on_errors()
         return ExitStatus.ERROR
     except BaseException as e:
         logging.getLogger(__name__).exception("A fatal error occurred while running subcommand [%s].", sub_command)
-        console.error("Cannot %s. %s." % (sub_command, e))
+        console.error(f"Cannot {sub_command}. {e}.")
         console.println("")
         print_help_on_errors()
         return ExitStatus.ERROR

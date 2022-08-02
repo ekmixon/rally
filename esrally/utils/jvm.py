@@ -34,17 +34,23 @@ def supports_option(java_home, option):
     :param option: The JVM option or combination of JVM options (separated by spaces) to check.
     :return: True iff the provided ``option`` is supported on this JVM.
     """
-    return process.exit_status_as_bool(lambda: process.run_subprocess_with_logging("{} {} -version".format(_java(java_home), option)))
+    return process.exit_status_as_bool(
+        lambda: process.run_subprocess_with_logging(
+            f"{_java(java_home)} {option} -version"
+        )
+    )
 
 
 def system_property(java_home, system_property_name):
-    lines = process.run_subprocess_with_output("{} -XshowSettings:properties -version".format(_java(java_home)))
+    lines = process.run_subprocess_with_output(
+        f"{_java(java_home)} -XshowSettings:properties -version"
+    )
+
     # matches e.g. "    java.runtime.version = 1.8.0_121-b13" and captures "1.8.0_121-b13"
     sys_prop_pattern = re.compile(r".*%s.*=\s?(.*)" % system_property_name)
     for line in lines:
-        m = sys_prop_pattern.match(line)
-        if m:
-            return m.group(1)
+        if m := sys_prop_pattern.match(line):
+            return m[1]
 
     return None
 
@@ -81,10 +87,7 @@ def major_version(java_home, sysprop_reader=system_property):
     """
     v = sysprop_reader(java_home, "java.vm.specification.version")
     # are we under the "old" (pre Java 9) or the new (Java 9+) version scheme?
-    if v.startswith("1."):
-        return int(v[2])
-    else:
-        return int(v)
+    return int(v[2]) if v.startswith("1.") else int(v)
 
 
 def is_early_access_release(java_home, sysprop_reader=system_property):
@@ -113,14 +116,14 @@ def resolve_path(majors, sysprop_reader=system_property):
     """
     if isinstance(majors, int):
         return majors, _resolve_single_path(majors, sysprop_reader=sysprop_reader)
-    else:
-        for major in majors:
-            java_home = _resolve_single_path(major, mandatory=False, sysprop_reader=sysprop_reader)
-            if java_home:
-                return major, java_home
-        raise exceptions.SystemSetupError(
-            "Install a JDK with one of the versions {} and point to it with one of {}.".format(majors, _checked_env_vars(majors))
-        )
+    for major in majors:
+        if java_home := _resolve_single_path(
+            major, mandatory=False, sysprop_reader=sysprop_reader
+        ):
+            return major, java_home
+    raise exceptions.SystemSetupError(
+        f"Install a JDK with one of the versions {majors} and point to it with one of {_checked_env_vars(majors)}."
+    )
 
 
 def _resolve_single_path(major, mandatory=True, sysprop_reader=system_property):
@@ -153,16 +156,15 @@ def _resolve_single_path(major, mandatory=True, sysprop_reader=system_property):
     java_home = do_resolve(specific_env_var, major)
     if java_home:
         return java_home
+    java_home = do_resolve(generic_env_var, major)
+    if java_home:
+        return java_home
+    elif mandatory:
+        raise exceptions.SystemSetupError(
+            "Neither {} nor {} point to a JDK {} installation.".format(specific_env_var, generic_env_var, major)
+        )
     else:
-        java_home = do_resolve(generic_env_var, major)
-        if java_home:
-            return java_home
-        elif mandatory:
-            raise exceptions.SystemSetupError(
-                "Neither {} nor {} point to a JDK {} installation.".format(specific_env_var, generic_env_var, major)
-            )
-        else:
-            return None
+        return None
 
 
 def _checked_env_vars(majors):
@@ -172,6 +174,6 @@ def _checked_env_vars(majors):
     :param majors: A list of major versions.
     :return: A list of checked environment variables.
     """
-    checked = ["JAVA{}_HOME".format(major) for major in majors]
+    checked = [f"JAVA{major}_HOME" for major in majors]
     checked.append("JAVA_HOME")
     return checked

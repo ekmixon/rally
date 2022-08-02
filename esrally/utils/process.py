@@ -36,8 +36,7 @@ def run_subprocess_with_output(command_line):
         has_output = True
         lines = []
         while has_output:
-            line = command_line_process.stdout.readline()
-            if line:
+            if line := command_line_process.stdout.readline():
                 lines.append(line.decode("UTF-8").strip())
             else:
                 has_output = False
@@ -81,15 +80,7 @@ def run_subprocess_with_logging(command_line, header=None, level=logging.INFO, s
         logger.info(header)
 
     # pylint: disable=subprocess-popen-preexec-fn
-    with subprocess.Popen(
-        command_line_args,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        universal_newlines=True,
-        env=env,
-        stdin=stdin if stdin else None,
-        preexec_fn=pre_exec,
-    ) as command_line_process:
+    with subprocess.Popen(command_line_args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True, env=env, stdin=stdin or None, preexec_fn=pre_exec) as command_line_process:
         stdout, _ = command_line_process.communicate()
         if stdout:
             logger.log(level=level, msg=stdout)
@@ -102,11 +93,9 @@ def is_rally_process(p):
     return (
         p.name() == "esrally"
         or p.name() == "rally"
-        or (
-            p.name().lower().startswith("python")
-            and any("esrally" in e for e in p.cmdline())
-            and not any("esrallyd" in e for e in p.cmdline())
-        )
+        or p.name().lower().startswith("python")
+        and any("esrally" in e for e in p.cmdline())
+        and all("esrallyd" not in e for e in p.cmdline())
     )
 
 
@@ -148,11 +137,10 @@ def kill_running_rally_instances():
         return (
             p.name() == "esrally"
             or p.name() == "rally"
-            or (
-                p.name().lower().startswith("python")
-                and any("esrally" in e for e in p.cmdline())
-                and not any("esrallyd" in e for e in p.cmdline())
-            )
+            or p.name().lower().startswith("python")
+            and any("esrally" in e for e in p.cmdline())
+            and all("esrallyd" not in e for e in p.cmdline())
         )
+
 
     kill_all(rally_process)

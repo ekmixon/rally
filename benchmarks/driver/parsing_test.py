@@ -51,7 +51,7 @@ def sort_parsing_candidate_reverse_and_regexp(response):
     sort_pattern = r"(\][^\]]*?\[):\"tros\""
     x = re.search(sort_pattern, reversed_response)
     # return json.loads(x.group(1)[::-1]) # mean 3.6 ms
-    return ujson.loads(x.group(1)[::-1])  # mean 1.7 ms
+    return ujson.loads(x[1][::-1])
 
 
 @pytest.mark.benchmark(
@@ -79,7 +79,7 @@ def sort_parsing_candidate_rfind_and_regexp(response):
     sort_pattern = r"sort\":([^\]]*])"
     x = re.search(sort_pattern, response[index_of_last_sort::])
     # return json.loads(x.group(1)[::-1])
-    return ujson.loads(x.group(1))
+    return ujson.loads(x[1])
 
 
 @pytest.mark.benchmark(
@@ -108,7 +108,7 @@ def sort_parsing_candidate_end_anchor_regexp(response):
     x = re.search(sort_pattern, response)
     # return ast.literal_eval(x.group(1)) # mean 8.6 ms
     # return json.loads(x.group(1)) # mean 3.2 ms
-    return ujson.loads(x.group(1))  # mean 1.5 ms
+    return ujson.loads(x[1])
 
 
 @pytest.mark.benchmark(
@@ -160,7 +160,7 @@ def test_pit_id_regexp_large(benchmark):
 def pit_id_parsing_candidate_regexp(response):
     pit_id_pattern = r'"pit_id":"([^"]*)"'  # 0.9 ms
     x = re.search(pit_id_pattern, response)
-    return x.group(1)
+    return x[1]
 
 
 @pytest.mark.benchmark(
@@ -242,8 +242,7 @@ def test_pit_id_parse_large(benchmark):
 def pit_id_parsing_candidate_runner_parse(response):
     response_bytes = io.BytesIO(response)
     parsed = runner.parse(response_bytes, ["pit_id"])
-    pit_id = parsed["pit_id"]
-    return pit_id
+    return parsed["pit_id"]
 
 
 class ParsingBenchmarks(TestCase):

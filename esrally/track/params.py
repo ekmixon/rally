@@ -168,7 +168,9 @@ class SleepParamSource(ParamSource):
         if not isinstance(duration, numbers.Number):
             raise exceptions.InvalidSyntax("parameter 'duration' for sleep operation must be a number")
         if duration < 0:
-            raise exceptions.InvalidSyntax("parameter 'duration' must be non-negative but was {}".format(duration))
+            raise exceptions.InvalidSyntax(
+                f"parameter 'duration' must be non-negative but was {duration}"
+            )
 
     def params(self):
         return dict(self._params)
@@ -204,15 +206,14 @@ class CreateIndexParamSource(ParamSource):
                 body = params.get("body")
                 if isinstance(idx, str):
                     idx = [idx]
-                for i in idx:
-                    self.index_definitions.append((i, body))
+                self.index_definitions.extend((i, body) for i in idx)
             except KeyError:
                 raise exceptions.InvalidSyntax("Please set the property 'index' for the create-index operation")
 
     def params(self):
         p = {}
         # ensure we pass all parameters...
-        p.update(self._params)
+        p |= self._params
         p.update(
             {
                 "indices": self.index_definitions,
@@ -231,22 +232,24 @@ class CreateDataStreamParamSource(ParamSource):
             filter_ds = params.get("data-stream")
             if isinstance(filter_ds, str):
                 filter_ds = [filter_ds]
-            for ds in track.data_streams:
-                if not filter_ds or ds.name in filter_ds:
-                    self.data_stream_definitions.append(ds.name)
+            self.data_stream_definitions.extend(
+                ds.name
+                for ds in track.data_streams
+                if not filter_ds or ds.name in filter_ds
+            )
+
         else:
             try:
                 data_stream = params["data-stream"]
                 data_streams = [data_stream] if isinstance(data_stream, str) else data_stream
-                for ds in data_streams:
-                    self.data_stream_definitions.append(ds)
+                self.data_stream_definitions.extend(iter(data_streams))
             except KeyError:
                 raise exceptions.InvalidSyntax("Please set the property 'data-stream' for the create-data-stream operation")
 
     def params(self):
         p = {}
         # ensure we pass all parameters...
-        p.update(self._params)
+        p |= self._params
         p.update(
             {
                 "data-streams": self.data_stream_definitions,
@@ -263,21 +266,18 @@ class DeleteDataStreamParamSource(ParamSource):
         self.only_if_exists = params.get("only-if-exists", True)
 
         self.data_stream_definitions = []
-        target_data_stream = params.get("data-stream")
-        if target_data_stream:
+        if target_data_stream := params.get("data-stream"):
             target_data_stream = [target_data_stream] if isinstance(target_data_stream, str) else target_data_stream
-            for ds in target_data_stream:
-                self.data_stream_definitions.append(ds)
+            self.data_stream_definitions.extend(iter(target_data_stream))
         elif track.data_streams:
-            for ds in track.data_streams:
-                self.data_stream_definitions.append(ds.name)
+            self.data_stream_definitions.extend(ds.name for ds in track.data_streams)
         else:
             raise exceptions.InvalidSyntax("delete-data-stream operation targets no data stream")
 
     def params(self):
         p = {}
         # ensure we pass all parameters...
-        p.update(self._params)
+        p |= self._params
         p.update(
             {"data-streams": self.data_stream_definitions, "request-params": self.request_params, "only-if-exists": self.only_if_exists}
         )
@@ -291,22 +291,19 @@ class DeleteIndexParamSource(ParamSource):
         self.only_if_exists = params.get("only-if-exists", True)
 
         self.index_definitions = []
-        target_index = params.get("index")
-        if target_index:
+        if target_index := params.get("index"):
             if isinstance(target_index, str):
                 target_index = [target_index]
-            for idx in target_index:
-                self.index_definitions.append(idx)
+            self.index_definitions.extend(iter(target_index))
         elif track.indices:
-            for idx in track.indices:
-                self.index_definitions.append(idx.name)
+            self.index_definitions.extend(idx.name for idx in track.indices)
         else:
             raise exceptions.InvalidSyntax("delete-index operation targets no index")
 
     def params(self):
         p = {}
         # ensure we pass all parameters...
-        p.update(self._params)
+        p |= self._params
         p.update(
             {
                 "indices": self.index_definitions,
@@ -345,7 +342,7 @@ class CreateIndexTemplateParamSource(ParamSource):
     def params(self):
         p = {}
         # ensure we pass all parameters...
-        p.update(self._params)
+        p |= self._params
         p.update(
             {
                 "templates": self.template_definitions,
@@ -363,9 +360,12 @@ class DeleteTemplateParamSource(ABC, ParamSource):
         self.template_definitions = []
         if templates:
             filter_template = params.get("template")
-            for template in templates:
-                if not filter_template or template.name == filter_template:
-                    self.template_definitions.append((template.name, template.delete_matching_indices, template.pattern))
+            self.template_definitions.extend(
+                (template.name, template.delete_matching_indices, template.pattern)
+                for template in templates
+                if not filter_template or template.name == filter_template
+            )
+
         else:
             try:
                 template = params["template"]
@@ -384,7 +384,7 @@ class DeleteTemplateParamSource(ABC, ParamSource):
     def params(self):
         p = {}
         # ensure we pass all parameters...
-        p.update(self._params)
+        p |= self._params
         p.update(
             {
                 "templates": self.template_definitions,
@@ -413,9 +413,12 @@ class DeleteComponentTemplateParamSource(ParamSource):
         self.template_definitions = []
         if track.component_templates:
             filter_template = params.get("template")
-            for template in track.component_templates:
-                if not filter_template or template.name == filter_template:
-                    self.template_definitions.append(template.name)
+            self.template_definitions.extend(
+                template.name
+                for template in track.component_templates
+                if not filter_template or template.name == filter_template
+            )
+
         else:
             try:
                 template = params["template"]
@@ -536,7 +539,7 @@ class SearchParamSource(ParamSource):
             self.query_params["assertions"] = params["assertions"]
 
         # Ensure we pass global parameters
-        self.query_params.update(self._client_params())
+        self.query_params |= self._client_params()
 
     def params(self):
         return self.query_params
@@ -580,7 +583,10 @@ class BulkIndexParamSource(ParamSource):
             )
             self.on_conflict = params.get("on-conflict", "index")
             if self.on_conflict not in ["index", "update"]:
-                raise exceptions.InvalidSyntax("Unknown 'on-conflict' setting [{}]".format(self.on_conflict))
+                raise exceptions.InvalidSyntax(
+                    f"Unknown 'on-conflict' setting [{self.on_conflict}]"
+                )
+
             self.recency = self.float_param(params, name="recency", default_value=0, min_value=0, max_value=1, min_operator=operator.lt)
 
         else:
@@ -651,7 +657,7 @@ class BulkIndexParamSource(ParamSource):
                 )
             return value
         except ValueError:
-            raise exceptions.InvalidSyntax("'{}' must be numeric".format(name))
+            raise exceptions.InvalidSyntax(f"'{name}' must be numeric")
 
     def used_corpora(self, t, params):
         corpora = []
@@ -673,8 +679,9 @@ class BulkIndexParamSource(ParamSource):
         # the track has corpora but none of them match
         if t.corpora and not corpora:
             raise exceptions.RallyAssertionError(
-                "The provided corpus %s does not match any of the corpora %s." % (corpora_names, track_corpora_names)
+                f"The provided corpus {corpora_names} does not match any of the corpora {track_corpora_names}."
             )
+
 
         return corpora
 
@@ -792,7 +799,7 @@ class OpenPointInTimeParamSource(ParamSource):
 
     def params(self):
         parsed_params = {"index": self._index_name, "keep-alive": self._keep_alive}
-        parsed_params.update(self._client_params())
+        parsed_params |= self._client_params()
         return parsed_params
 
 
@@ -803,7 +810,7 @@ class ClosePointInTimeParamSource(ParamSource):
 
     def params(self):
         parsed_params = {"with-point-in-time-from": self._pit_task_name}
-        parsed_params.update(self._client_params())
+        parsed_params |= self._client_params()
         return parsed_params
 
 
@@ -831,7 +838,7 @@ class ForceMergeParamSource(ParamSource):
             "mode": self._mode,
             "poll-period": self._poll_period,
         }
-        parsed_params.update(self._client_params())
+        parsed_params |= self._client_params()
         return parsed_params
 
 
@@ -842,11 +849,7 @@ def get_target(track, params):
         default_target = track.data_streams[0].name
     else:
         default_target = None
-    # indices are preferred but data streams can also be queried the same way
-    target_name = params.get("index")
-    if not target_name:
-        target_name = params.get("data-stream", default_target)
-    return target_name
+    return params.get("index") or params.get("data-stream", default_target)
 
 
 def number_of_bulks(corpora, start_partition_index, end_partition_index, total_partitions, bulk_size):
@@ -888,8 +891,7 @@ def chain(*iterables):
     for it in iterables:
         # execute within a context
         with it:
-            for element in it:
-                yield element
+            yield from it
 
 
 def create_default_reader(
@@ -909,17 +911,16 @@ def create_default_reader(
 
     if docs.includes_action_and_meta_data:
         return SourceOnlyIndexDataReader(docs.document_file, batch_size, bulk_size, source, target, docs.target_type)
-    else:
-        am_handler = GenerateActionMetaData(
-            target,
-            docs.target_type,
-            build_conflicting_ids(id_conflicts, num_docs, offset),
-            conflict_probability,
-            on_conflict,
-            recency,
-            use_create=use_create,
-        )
-        return MetadataIndexDataReader(docs.document_file, batch_size, bulk_size, source, am_handler, target, docs.target_type)
+    am_handler = GenerateActionMetaData(
+        target,
+        docs.target_type,
+        build_conflicting_ids(id_conflicts, num_docs, offset),
+        conflict_probability,
+        on_conflict,
+        recency,
+        use_create=use_create,
+    )
+    return MetadataIndexDataReader(docs.document_file, batch_size, bulk_size, source, am_handler, target, docs.target_type)
 
 
 def create_readers(
@@ -1124,41 +1125,43 @@ class GenerateActionMetaData:
         return self
 
     def __next__(self):
-        if self.conflicting_ids is not None:
-            if self.conflict_probability and self.id_up_to > 0 and self.rand() <= self.conflict_probability:
-                # a recency of zero means that we don't care about recency and just take a random number
-                # within the whole interval.
-                if self.recency == 0:
-                    idx = self.randint(0, self.id_up_to - 1)
-                else:
-                    # A recency > 0 biases id selection towards more recent ids. The recency parameter decides
-                    # by how much we bias. See docs for the resulting curve.
-                    #
-                    # idx_range is in the interval [0, 1].
-                    idx_range = min(self.randexp(GenerateActionMetaData.RECENCY_SLOPE * self.recency), 1)
-                    # the resulting index is in the range [0, self.id_up_to). Note that a smaller idx_range
-                    # biases towards more recently used ids (higher indexes).
-                    idx = round((self.id_up_to - 1) * (1 - idx_range))
+        if self.conflicting_ids is None:
+            return (
+                ("create", self.meta_data_create_no_id)
+                if self.use_create
+                else ("index", self.meta_data_index_no_id)
+            )
 
-                doc_id = self.conflicting_ids[idx]
-                action = self.on_conflict
+        if self.conflict_probability and self.id_up_to > 0 and self.rand() <= self.conflict_probability:
+            # a recency of zero means that we don't care about recency and just take a random number
+            # within the whole interval.
+            if self.recency == 0:
+                idx = self.randint(0, self.id_up_to - 1)
             else:
-                if self.id_up_to >= len(self.conflicting_ids):
-                    raise StopIteration()
-                doc_id = self.conflicting_ids[self.id_up_to]
-                self.id_up_to += 1
-                action = "index"
+                # A recency > 0 biases id selection towards more recent ids. The recency parameter decides
+                # by how much we bias. See docs for the resulting curve.
+                #
+                # idx_range is in the interval [0, 1].
+                idx_range = min(self.randexp(GenerateActionMetaData.RECENCY_SLOPE * self.recency), 1)
+                # the resulting index is in the range [0, self.id_up_to). Note that a smaller idx_range
+                # biases towards more recently used ids (higher indexes).
+                idx = round((self.id_up_to - 1) * (1 - idx_range))
 
-            if action == "index":
-                return "index", self.meta_data_index_with_id % doc_id
-            elif action == "update":
-                return "update", self.meta_data_update_with_id % doc_id
-            else:
-                raise exceptions.RallyAssertionError("Unknown action [{}]".format(action))
+            doc_id = self.conflicting_ids[idx]
+            action = self.on_conflict
         else:
-            if self.use_create:
-                return "create", self.meta_data_create_no_id
-            return "index", self.meta_data_index_no_id
+            if self.id_up_to >= len(self.conflicting_ids):
+                raise StopIteration()
+            doc_id = self.conflicting_ids[self.id_up_to]
+            self.id_up_to += 1
+            action = "index"
+
+        if action == "index":
+            return "index", self.meta_data_index_with_id % doc_id
+        elif action == "update":
+            return "update", self.meta_data_update_with_id % doc_id
+        else:
+            raise exceptions.RallyAssertionError(f"Unknown action [{action}]")
 
 
 class Slice:
@@ -1197,13 +1200,12 @@ class Slice:
     def __next__(self):
         if self.current_line >= self.number_of_lines:
             raise StopIteration()
-        else:
-            # ensure we don't read past the allowed number of lines.
-            lines = self.source.readlines(min(self.bulk_size, self.number_of_lines - self.current_line))
-            self.current_line += len(lines)
-            if len(lines) == 0:
-                raise StopIteration()
-            return lines
+        # ensure we don't read past the allowed number of lines.
+        lines = self.source.readlines(min(self.bulk_size, self.number_of_lines - self.current_line))
+        self.current_line += len(lines)
+        if len(lines) == 0:
+            raise StopIteration()
+        return lines
 
     def __str__(self):
         return "%s[%d;%d]" % (self.source, self.offset, self.offset + self.number_of_lines)
@@ -1284,8 +1286,7 @@ class MetadataIndexDataReader(IndexDataReader):
         docs = next(self.file_source)
 
         for doc in docs:
-            current_bulk.append(action_metadata_line)
-            current_bulk.append(doc)
+            current_bulk.extend((action_metadata_line, doc))
         return len(docs), current_bulk
 
     def _read_bulk_regular(self):
@@ -1296,8 +1297,7 @@ class MetadataIndexDataReader(IndexDataReader):
         current_bulk = []
         docs = next(self.file_source)
         for doc in docs:
-            action_metadata_item = next(self.action_metadata)
-            if action_metadata_item:
+            if action_metadata_item := next(self.action_metadata):
                 action_type, action_metadata_line = action_metadata_item
                 current_bulk.append(action_metadata_line.encode("utf-8"))
                 if action_type == "update":

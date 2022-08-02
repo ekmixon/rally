@@ -48,8 +48,7 @@ def extract_mappings_and_corpora(client, output_path, indices_to_extract):
 
     # That list only contains valid indices (with index patterns already resolved)
     for i in indices:
-        c = corpus.extract(client, output_path, i["name"])
-        if c:
+        if c := corpus.extract(client, output_path, i["name"]):
             corpora.append(c)
 
     return indices, corpora

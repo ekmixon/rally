@@ -47,7 +47,6 @@ def install(cfg):
 
     # A non-empty distribution-version is provided
     distribution = bool(cfg.opts("mechanic", "distribution.version", mandatory=False))
-    sources = not distribution
     build_type = cfg.opts("mechanic", "build.type")
     ip = cfg.opts("mechanic", "network.host")
     http_port = int(cfg.opts("mechanic", "network.http.port"))
@@ -56,6 +55,7 @@ def install(cfg):
     seed_hosts = cfg.opts("mechanic", "seed.hosts")
 
     if build_type == "tar":
+        sources = not distribution
         binary_supplier = supplier.create(cfg, sources, distribution, car, plugins)
         p = provisioner.local(
             cfg=cfg,
@@ -78,7 +78,7 @@ def install(cfg):
         # there is no binary for Docker that can be downloaded / built upfront
         node_config = p.prepare(binary=None)
     else:
-        raise exceptions.SystemSetupError("Unknown build type [{}]".format(build_type))
+        raise exceptions.SystemSetupError(f"Unknown build type [{build_type}]")
 
     provisioner.save_node_configuration(root_path, node_config)
     console.println(json.dumps({"installation-id": cfg.opts("system", "install.id")}, indent=2), force=True)
@@ -92,9 +92,9 @@ def start(cfg):
         _load_node_file(root_path)
         install_id = cfg.opts("system", "install.id")
         raise exceptions.SystemSetupError(
-            "A node with this installation id is already running. Please stop it first "
-            "with {} stop --installation-id={}".format(PROGRAM_NAME, install_id)
+            f"A node with this installation id is already running. Please stop it first with {PROGRAM_NAME} stop --installation-id={install_id}"
         )
+
 
     node_config = provisioner.load_node_configuration(root_path)
 
@@ -103,7 +103,10 @@ def start(cfg):
     elif node_config.build_type == "docker":
         node_launcher = launcher.DockerLauncher(cfg)
     else:
-        raise exceptions.SystemSetupError("Unknown build type [{}]".format(node_config.build_type))
+        raise exceptions.SystemSetupError(
+            f"Unknown build type [{node_config.build_type}]"
+        )
+
     nodes = node_launcher.start([node_config])
     _store_node_file(root_path, (nodes, race_id))
 
@@ -116,7 +119,10 @@ def stop(cfg):
     elif node_config.build_type == "docker":
         node_launcher = launcher.DockerLauncher(cfg)
     else:
-        raise exceptions.SystemSetupError("Unknown build type [{}]".format(node_config.build_type))
+        raise exceptions.SystemSetupError(
+            f"Unknown build type [{node_config.build_type}]"
+        )
+
 
     nodes, race_id = _load_node_file(root_path)
 
@@ -299,10 +305,7 @@ def to_ip_port(hosts):
 
 
 def extract_all_node_ips(ip_port_pairs):
-    all_node_ips = set()
-    for ip, _ in ip_port_pairs:
-        all_node_ips.add(ip)
-    return all_node_ips
+    return {ip for ip, _ in ip_port_pairs}
 
 
 def extract_all_node_ids(all_nodes_by_host):
@@ -314,12 +317,10 @@ def extract_all_node_ids(all_nodes_by_host):
 
 def nodes_by_host(ip_port_pairs):
     nodes = {}
-    node_id = 0
-    for ip_port in ip_port_pairs:
+    for node_id, ip_port in enumerate(ip_port_pairs):
         if ip_port not in nodes:
             nodes[ip_port] = []
         nodes[ip_port].append(node_id)
-        node_id += 1
     return nodes
 
 
@@ -347,7 +348,7 @@ class MechanicActor(actor.RallyActor):
         if self.is_current_status_expected(["cluster_stopping", "cluster_stopped"]):
             self.logger.info("Child actor exited while engine is stopping or stopped: [%s]", msg)
             return
-        failmsg = "Child actor exited with [%s] while in status [%s]." % (msg, self.status)
+        failmsg = f"Child actor exited with [{msg}] while in status [{self.status}]."
         self.logger.error(failmsg)
         self.send(self.race_control, actor.BenchmarkFailure(failmsg))
 
@@ -416,7 +417,7 @@ class MechanicActor(actor.RallyActor):
         if msg.payload == MechanicActor.WAKEUP_RESET_RELATIVE_TIME:
             self.reset_relative_time()
         else:
-            raise exceptions.RallyAssertionError("Unknown wakeup reason [{}]".format(msg.payload))
+            raise exceptions.RallyAssertionError(f"Unknown wakeup reason [{msg.payload}]")
 
     def receiveMsg_BenchmarkFailure(self, msg, sender):
         self.send(self.race_control, msg)
@@ -501,7 +502,12 @@ class Dispatcher(actor.RallyActor):
     def receiveMsg_ActorSystemConventionUpdate(self, convmsg, sender):
         if not convmsg.remoteAdded:
             self.logger.warning("Remote Rally node [%s] exited during NodeMechanicActor startup process.", convmsg.remoteAdminAddress)
-            self.start_sender(actor.BenchmarkFailure("Remote Rally node [%s] has been shutdown prematurely." % convmsg.remoteAdminAddress))
+            self.start_sender(
+                actor.BenchmarkFailure(
+                    f"Remote Rally node [{convmsg.remoteAdminAddress}] has been shutdown prematurely."
+                )
+            )
+
         else:
             remote_ip = convmsg.remoteCapabilities.get("ip", None)
             self.logger.info("Remote Rally node [%s] has started.", remote_ip)
@@ -624,7 +630,10 @@ class NodeMechanicActor(actor.RallyActor):
                     self.mechanic = None
         except BaseException as e:
             self.logger.exception("Cannot process message [%s]", msg)
-            self.send(getattr(msg, "reply_to", sender), actor.BenchmarkFailure("Error on host %s" % str(self.host), e))
+            self.send(
+                getattr(msg, "reply_to", sender),
+                actor.BenchmarkFailure(f"Error on host {str(self.host)}", e),
+            )
 
 
 #####################################################
@@ -656,10 +665,10 @@ def create(
 
     if sources or distribution:
         s = supplier.create(cfg, sources, distribution, car, plugins)
+        all_node_names = [f"{node_name_prefix}-{n}" for n in all_node_ids]
         p = []
-        all_node_names = ["%s-%s" % (node_name_prefix, n) for n in all_node_ids]
         for node_id in node_ids:
-            node_name = "%s-%s" % (node_name_prefix, node_id)
+            node_name = f"{node_name_prefix}-{node_id}"
             p.append(provisioner.local(cfg, car, plugins, node_ip, node_http_port, all_node_ips, all_node_names, race_root_path, node_name))
         l = launcher.ProcessLauncher(cfg)
     elif external:
@@ -672,7 +681,7 @@ def create(
         s = lambda: None
         p = []
         for node_id in node_ids:
-            node_name = "%s-%s" % (node_name_prefix, node_id)
+            node_name = f"{node_name_prefix}-{node_id}"
             p.append(provisioner.docker(cfg, car, node_ip, node_http_port, race_root_path, node_name))
         l = launcher.DockerLauncher(cfg)
     else:
@@ -701,9 +710,7 @@ class Mechanic:
 
     def start_engine(self):
         binaries = self.supply()
-        self.node_configs = []
-        for p in self.provisioners:
-            self.node_configs.append(p.prepare(binaries))
+        self.node_configs = [p.prepare(binaries) for p in self.provisioners]
         self.nodes = self.launcher.start(self.node_configs)
         return self.nodes
 

@@ -236,7 +236,7 @@ class IndexTemplateProvider:
         return self._read("results-template")
 
     def _read(self, template_name):
-        with open("%s/resources/%s.json" % (self.script_dir, template_name), encoding="utf-8") as f:
+        with open(f"{self.script_dir}/resources/{template_name}.json", encoding="utf-8") as f:
             template = json.load(f)
             if self._number_of_shards is not None:
                 if int(self._number_of_shards) < 1:
@@ -362,10 +362,7 @@ class MetricsStore:
         self._car_name = None
         self._environment_name = cfg.opts("system", "env.name")
         self.opened = False
-        if meta_info is None:
-            self._meta_info = {}
-        else:
-            self._meta_info = meta_info
+        self._meta_info = {} if meta_info is None else meta_info
         # ensure mandatory keys are always present
         if MetaInfoScope.cluster not in self._meta_info:
             self._meta_info[MetaInfoScope.cluster] = {}
@@ -416,7 +413,7 @@ class MetricsStore:
         user_tags = extract_user_tags_from_config(self._config)
         for k, v in user_tags.items():
             # prefix user tag with "tag_" in order to avoid clashes with our internal meta data
-            self.add_meta_info(MetaInfoScope.cluster, None, "tag_%s" % k, v)
+            self.add_meta_info(MetaInfoScope.cluster, None, f"tag_{k}", v)
         # Don't store it for each metrics record as it's probably sufficient on race level
         # self.add_meta_info(MetaInfoScope.cluster, None, "rally_version", version.version())
         self._stop_watch.start()
@@ -462,7 +459,7 @@ class MetricsStore:
                 self._meta_info[MetaInfoScope.node][scope_key] = {}
             self._meta_info[MetaInfoScope.node][scope_key][key] = value
         else:
-            raise exceptions.SystemSetupError("Unknown meta info scope [%s]" % scope)
+            raise exceptions.SystemSetupError(f"Unknown meta info scope [{scope}]")
 
     def _clear_meta_info(self):
         """
@@ -592,7 +589,10 @@ class MetricsStore:
             if level_key in self._meta_info[MetaInfoScope.node]:
                 meta.update(self._meta_info[MetaInfoScope.node][level_key])
         else:
-            raise exceptions.SystemSetupError("Unknown meta info level [%s] for metric [%s]" % (level, name))
+            raise exceptions.SystemSetupError(
+                f"Unknown meta info level [{level}] for metric [{name}]"
+            )
+
         if meta_data:
             meta.update(meta_data)
 
@@ -648,7 +648,7 @@ class MetricsStore:
         elif level is None:
             meta = None
         else:
-            raise exceptions.SystemSetupError("Unknown meta info level [{}]".format(level))
+            raise exceptions.SystemSetupError(f"Unknown meta info level [{level}]")
 
         if meta and meta_data:
             meta.update(meta_data)
@@ -883,7 +883,7 @@ class EsMetricsStore(MetricsStore):
         return "rally-metrics-%04d-%02d" % (ts.year, ts.month)
 
     def _migrated_index_name(self, original_name):
-        return "{}.new".format(original_name)
+        return f"{original_name}.new"
 
     def _get_template(self):
         return self._index_template_provider.metrics_template()
@@ -935,10 +935,7 @@ class EsMetricsStore(MetricsStore):
         if isinstance(hits, dict):
             hits = hits["value"]
         self.logger.debug("Metrics query produced [%s] results.", hits)
-        if hits > 0:
-            return mapper(result["hits"]["hits"][0]["_source"])
-        else:
-            return None
+        return mapper(result["hits"]["hits"][0]["_source"]) if hits > 0 else None
 
     def get_error_rate(self, task, operation_type=None, sample_type=None):
         query = {
@@ -1020,11 +1017,10 @@ class EsMetricsStore(MetricsStore):
         if isinstance(hits, dict):
             hits = hits["value"]
         self.logger.debug("get_percentiles produced %d hits", hits)
-        if hits > 0:
-            raw = result["aggregations"]["percentile_stats"]["values"]
-            return collections.OrderedDict(sorted(raw.items(), key=lambda t: float(t[0])))
-        else:
+        if hits <= 0:
             return None
+        raw = result["aggregations"]["percentile_stats"]["values"]
+        return collections.OrderedDict(sorted(raw.items(), key=lambda t: float(t[0])))
 
     def _query_by_name(self, name, task, operation_type, sample_type, node_name):
         q = {
@@ -1145,13 +1141,12 @@ class InMemoryMetricsStore(MetricsStore):
         rank = float(percentile) / 100.0 * (len(sorted_values) - 1)
         if rank == int(rank):
             return sorted_values[int(rank)]
-        else:
-            lr = math.floor(rank)
-            lr_next = math.ceil(rank)
-            fr = rank - lr
-            lower_score = sorted_values[lr]
-            higher_score = sorted_values[lr_next]
-            return lower_score + (higher_score - lower_score) * fr
+        lr = math.floor(rank)
+        lr_next = math.ceil(rank)
+        fr = rank - lr
+        lower_score = sorted_values[lr]
+        higher_score = sorted_values[lr_next]
+        return lower_score + (higher_score - lower_score) * fr
 
     def get_error_rate(self, task, operation_type=None, sample_type=None):
         error = 0
@@ -1167,10 +1162,7 @@ class InMemoryMetricsStore(MetricsStore):
                 total_count += 1
                 if doc["meta"]["success"] is False:
                     error += 1
-        if total_count > 0:
-            return error / total_count
-        else:
-            return 0.0
+        return error / total_count if total_count > 0 else 0.0
 
     def get_stats(self, name, task=None, operation_type=None, sample_type=SampleType.Normal):
         values = self.get(name, task, operation_type, sample_type)
@@ -1204,15 +1196,25 @@ class InMemoryMetricsStore(MetricsStore):
             docs = sorted(self.docs, key=lambda k: k[sort_key], reverse=sort_reverse)
         else:
             docs = self.docs
-        for doc in docs:
-            if (
-                doc["name"] == name
-                and (task is None or doc["task"] == task)
-                and (sample_type is None or doc["sample-type"] == sample_type.name.lower())
-                and (node_name is None or doc.get("meta", {}).get("node_name") == node_name)
-            ):
-                return mapper(doc)
-        return None
+        return next(
+            (
+                mapper(doc)
+                for doc in docs
+                if (
+                    doc["name"] == name
+                    and (task is None or doc["task"] == task)
+                    and (
+                        sample_type is None
+                        or doc["sample-type"] == sample_type.name.lower()
+                    )
+                    and (
+                        node_name is None
+                        or doc.get("meta", {}).get("node_name") == node_name
+                    )
+                )
+            ),
+            None,
+        )
 
     def __str__(self):
         return "in-memory metrics store"
@@ -1252,7 +1254,7 @@ def list_races(cfg):
     def format_dict(d):
         if d:
             items = sorted(d.items())
-            return ", ".join(["%s=%s" % (k, v) for k, v in items])
+            return ", ".join([f"{k}={v}" for k, v in items])
         else:
             return None
 
@@ -1272,7 +1274,7 @@ def list_races(cfg):
             ]
         )
 
-    if len(races) > 0:
+    if races:
         console.println("\nRecent races:\n")
         console.println(
             tabulate.tabulate(
@@ -1356,7 +1358,7 @@ class Race:
         if meta_data is None:
             meta_data = {}
             if track:
-                meta_data.update(track.meta_data)
+                meta_data |= track.meta_data
             if challenge:
                 meta_data.update(challenge.meta_data)
         self.rally_version = rally_version
@@ -1468,7 +1470,7 @@ class Race:
 
         for item in self.results.as_flat_list():
             result = result_template.copy()
-            result.update(item)
+            result |= item
             all_results.append(result)
 
         return all_results
@@ -1562,10 +1564,9 @@ class FileRaceStore(RaceStore):
     def find_by_race_id(self, race_id):
         race_file = self._race_file(race_id=race_id)
         if io.exists(race_file):
-            races = self._to_races([race_file])
-            if races:
+            if races := self._to_races([race_file]):
                 return races[0]
-        raise exceptions.NotFound("No race with race id [{}]".format(race_id))
+        raise exceptions.NotFound(f"No race with race id [{race_id}]")
 
     def _to_races(self, results):
         races = []
@@ -1628,7 +1629,7 @@ class EsRaceStore(RaceStore):
                 },
             ],
         }
-        result = self.client.search(index="%s*" % EsRaceStore.INDEX_PREFIX, body=query)
+        result = self.client.search(index=f"{EsRaceStore.INDEX_PREFIX}*", body=query)
         hits = result["hits"]["total"]
         # Elasticsearch 7.0+
         if isinstance(hits, dict):
@@ -1652,7 +1653,7 @@ class EsRaceStore(RaceStore):
                 },
             },
         }
-        result = self.client.search(index="%s*" % EsRaceStore.INDEX_PREFIX, body=query)
+        result = self.client.search(index=f"{EsRaceStore.INDEX_PREFIX}*", body=query)
         hits = result["hits"]["total"]
         # Elasticsearch 7.0+
         if isinstance(hits, dict):
@@ -1661,10 +1662,11 @@ class EsRaceStore(RaceStore):
             return Race.from_dict(result["hits"]["hits"][0]["_source"])
         elif hits > 1:
             raise exceptions.RallyAssertionError(
-                "Expected exactly one race to match race id [{}] but there were [{}] matches.".format(race_id, hits)
+                f"Expected exactly one race to match race id [{race_id}] but there were [{hits}] matches."
             )
+
         else:
-            raise exceptions.NotFound("No race with race id [{}]".format(race_id))
+            raise exceptions.NotFound(f"No race with race id [{race_id}]")
 
 
 class EsResultsStore:
@@ -1811,15 +1813,11 @@ class GlobalStatsCalculator:
         result = {}
         for arg in args:
             if arg is not None:
-                result.update(arg)
+                result |= arg
         return result
 
     def sum(self, metric_name):
-        values = self.store.get(metric_name)
-        if values:
-            return sum(values)
-        else:
-            return None
+        return sum(values) if (values := self.store.get(metric_name)) else None
 
     def one(self, metric_name):
         return self.store.get_one(metric_name)
@@ -1864,10 +1862,18 @@ class GlobalStatsCalculator:
         values = self.store.get_raw("ml_processing_time")
         result = []
         if values:
-            for v in values:
-                result.append(
-                    {"job": v["job"], "min": v["min"], "mean": v["mean"], "median": v["median"], "max": v["max"], "unit": v["unit"]}
-                )
+            result.extend(
+                {
+                    "job": v["job"],
+                    "min": v["min"],
+                    "mean": v["mean"],
+                    "median": v["median"],
+                    "max": v["max"],
+                    "unit": v["unit"],
+                }
+                for v in values
+            )
+
         return result
 
     def total_transform_metric(self, metric_name):
@@ -1962,10 +1968,7 @@ class GlobalStats:
     def as_flat_list(self):
         def op_metrics(op_item, key, single_value=False):
             doc = {"task": op_item["task"], "operation": op_item["operation"], "name": key}
-            if single_value:
-                doc["value"] = {"single": op_item[key]}
-            else:
-                doc["value"] = op_item[key]
+            doc["value"] = {"single": op_item[key]} if single_value else op_item[key]
             if "meta" in op_item:
                 doc["meta"] = op_item["meta"]
             return doc
@@ -2030,11 +2033,10 @@ class GlobalStats:
         return [v.get("task", v["operation"]) for v in self.op_metrics]
 
     def metrics(self, task):
-        # ensure we can read race.json files before Rally 0.8.0
-        for r in self.op_metrics:
-            if r.get("task", r["operation"]) == task:
-                return r
-        return None
+        return next(
+            (r for r in self.op_metrics if r.get("task", r["operation"]) == task),
+            None,
+        )
 
 
 class SystemStatsCalculator:
@@ -2077,8 +2079,10 @@ class SystemStats:
         self.node_metrics.append(metric)
 
     def as_flat_list(self):
-        all_results = []
-        for v in self.node_metrics:
-            all_results.append({"node": v["node"], "name": v["name"], "value": {"single": v["value"]}})
+        all_results = [
+            {"node": v["node"], "name": v["name"], "value": {"single": v["value"]}}
+            for v in self.node_metrics
+        ]
+
         # Sort for a stable order in tests.
         return sorted(all_results, key=lambda m: m["name"])

@@ -31,7 +31,7 @@ def revision():
     """
     # noinspection PyBroadException
     try:
-        if git.is_working_copy(io.normalize_path("%s/.." % paths.rally_root())):
+        if git.is_working_copy(io.normalize_path(f"{paths.rally_root()}/..")):
             raw_revision = git.head_revision(paths.rally_root())
             return raw_revision.strip()
     except BaseException:
@@ -44,9 +44,8 @@ def version():
     :return: The release version string and an optional suffix for the current git revision if Rally is installed in development mode.
     """
     release = __version__
-    rally_revision = revision()
-    if rally_revision:
-        return "%s (git revision: %s)" % (release, rally_revision.strip())
+    if rally_revision := revision():
+        return f"{release} (git revision: {rally_revision.strip()})"
     else:
         # cannot determine head revision so user has probably installed Rally via pip instead of git clone
         return release

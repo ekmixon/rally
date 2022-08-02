@@ -53,8 +53,7 @@ def components(version, strict=True):
     :return: A tuple with four components determining "major", "minor", "patch" and "suffix" (any part except "major" may be `None`)
     """
     versions_pattern = _versions_pattern(strict)
-    matches = versions_pattern.match(version)
-    if matches:
+    if matches := versions_pattern.match(version):
         if matches.start(4) > 0:
             return int(matches.group(1)), int(matches.group(2)), int(matches.group(3)), matches.group(4)
         elif matches.start(3) > 0:

@@ -255,7 +255,13 @@ class DriverActor(actor.RallyActor):
                 self.logger.info("Worker [%d] has exited.", worker_index)
             else:
                 self.logger.error("Worker [%d] has exited prematurely. Aborting benchmark.", worker_index)
-                self.send(self.start_sender, actor.BenchmarkFailure("Worker [{}] has exited prematurely.".format(worker_index)))
+                self.send(
+                    self.start_sender,
+                    actor.BenchmarkFailure(
+                        f"Worker [{worker_index}] has exited prematurely."
+                    ),
+                )
+
         else:
             self.logger.info("A track preparator has exited.")
 
@@ -322,10 +328,7 @@ class DriverActor(actor.RallyActor):
         self.send(self.start_sender, TaskFinished(metrics, next_task_scheduled_in))
 
     def _requirements(self, host):
-        if host == "localhost":
-            return {"coordinator": True}
-        else:
-            return {"ip": host}
+        return {"coordinator": True} if host == "localhost" else {"ip": host}
 
     def prepare_track(self, hosts, cfg, track):
         self.track = track
@@ -426,8 +429,7 @@ class TaskExecutionActor(actor.RallyActor):
     @actor.no_retry("task executor")  # pylint: disable=no-value-for-parameter
     def receiveMsg_WakeupMessage(self, msg, sender):
         if self.executor_future is not None and self.executor_future.done():
-            e = self.executor_future.exception(timeout=0)
-            if e:
+            if e := self.executor_future.exception(timeout=0):
                 self.logger.exception("Worker failed. Notifying parent...", exc_info=e)
                 # the exception might be user-defined and not be on the load path of the original sender. Hence, it
                 # cannot be deserialized on the receiver so we convert it here to a plain string.
@@ -514,17 +516,19 @@ class TrackPreparationActor(actor.RallyActor):
             self.send(self.original_sender, TrackPrepared())
 
     def _seed_tasks(self, processor):
-        self.tasks = list(WorkerTask(func, params) for func, params in processor.on_prepare_track(self.track, self.data_root_dir))
+        self.tasks = [
+            WorkerTask(func, params)
+            for func, params in processor.on_prepare_track(
+                self.track, self.data_root_dir
+            )
+        ]
 
     def _create_task_executor(self):
         return self.createActor(TaskExecutionActor)
 
     @actor.no_retry("track preparator")  # pylint: disable=no-value-for-parameter
     def receiveMsg_ReadyForWork(self, msg, sender):
-        if self.tasks:
-            next_task = self.tasks.pop()
-        else:
-            next_task = None
+        next_task = self.tasks.pop() if self.tasks else None
         new_msg = DoTask(next_task, self.cfg)
         self.logger.debug("Track Preparator sending %s to %s", vars(new_msg), sender)
         self.send(sender, new_msg)
@@ -664,11 +668,7 @@ class Driver:
                 # for simplicity we assume that all benchmark machines have the same specs
                 "cores": num_cores(self.config)
             }
-            if host != "localhost":
-                host_config["host"] = net.resolve(host)
-            else:
-                host_config["host"] = host
-
+            host_config["host"] = net.resolve(host) if host != "localhost" else host
             self.load_driver_hosts.append(host_config)
 
         self.target.prepare_track([h["host"] for h in self.load_driver_hosts], self.config, self.track)
@@ -754,15 +754,7 @@ class Driver:
             self.may_complete_current_task(task_allocations)
 
     def move_to_next_task(self, workers_curr_step):
-        if self.config.opts("track", "test.mode.enabled"):
-            # don't wait if test mode is enabled and start the next task immediately.
-            waiting_period = 0
-        else:
-            # start the next task in one second (relative to master's timestamp)
-            #
-            # Assumption: We don't have a lot of clock skew between reaching the join point and sending the next task
-            #             (it doesn't matter too much if we're a few ms off).
-            waiting_period = 1.0
+        waiting_period = 0 if self.config.opts("track", "test.mode.enabled") else 1.0
         # Some metrics store implementations return None because no external representation is required.
         # pylint: disable=assignment-from-none
         m = self.metrics_store.to_externalizable(clear=True)
@@ -802,7 +794,10 @@ class Driver:
         # is to simplify logic, otherwise we'd need to implement some form of state machine involving actor-to-actor
         # communication.
 
-        if len(any_joinpoints_completing_parent) > 0 and not self.complete_current_task_sent:
+        if (
+            any_joinpoints_completing_parent
+            and not self.complete_current_task_sent
+        ):
             self.logger.info(
                 "Any task before join point [%s] is able to complete the parent structure. Telling all clients to exit immediately.",
                 any_joinpoints_completing_parent[0].task,
@@ -812,8 +807,6 @@ class Driver:
             for worker in self.workers:
                 self.target.complete_current_task(worker)
 
-        # If we have a specific 'completed-by' task specified, then we want to make sure that all clients for that task
-        # are able to complete their runners as expected before completing the parent
         elif len(joinpoints_completing_parent) > 0 and not self.complete_current_task_sent:
             # while this list could contain multiple items, it should always be the same task (but multiple
             # different clients) so any item is sufficient.
@@ -832,18 +825,17 @@ class Driver:
                     pending_client_ids.append(client_id)
 
             # are all clients executing said task already done? if so we need to notify the remaining clients
-            if len(pending_client_ids) == 0:
+            if not pending_client_ids:
                 # As we are waiting for other clients to finish, we would send this message over and over again.
                 # Hence we need to memorize whether we have already sent it for the current step.
                 self.complete_current_task_sent = True
                 self.logger.info("All affected clients have finished. Notifying all clients to complete their current tasks.")
                 for worker in self.workers:
                     self.target.complete_current_task(worker)
+            elif len(pending_client_ids) > 32:
+                self.logger.info("[%d] clients did not yet finish.", len(pending_client_ids))
             else:
-                if len(pending_client_ids) > 32:
-                    self.logger.info("[%d] clients did not yet finish.", len(pending_client_ids))
-                else:
-                    self.logger.info("Client id(s) [%s] did not yet finish.", ",".join(map(str, pending_client_ids)))
+                self.logger.info("Client id(s) [%s] did not yet finish.", ",".join(map(str, pending_client_ids)))
 
     def reset_relative_time(self):
         self.logger.debug("Resetting relative time of request metrics store.")
@@ -865,24 +857,28 @@ class Driver:
                 self.most_recent_sample_per_client[s.client_id] = s
 
     def update_progress_message(self, task_finished=False):
-        if not self.quiet and self.current_step >= 0:
-            tasks = ",".join([t.name for t in self.tasks_per_join_point[self.current_step]])
+        if self.quiet or self.current_step < 0:
+            return
+        tasks = ",".join([t.name for t in self.tasks_per_join_point[self.current_step]])
 
-            if task_finished:
-                total_progress = 1.0
-            else:
-                # we only count clients which actually contribute to progress. If clients are executing tasks eternally in a parallel
-                # structure, we should not count them. The reason is that progress depends entirely on the client(s) that execute the
-                # task that is completing the parallel structure.
-                progress_per_client = [
-                    s.percent_completed for s in self.most_recent_sample_per_client.values() if s.percent_completed is not None
-                ]
+        if task_finished:
+            total_progress = 1.0
+        else:
+            # we only count clients which actually contribute to progress. If clients are executing tasks eternally in a parallel
+            # structure, we should not count them. The reason is that progress depends entirely on the client(s) that execute the
+            # task that is completing the parallel structure.
+            progress_per_client = [
+                s.percent_completed for s in self.most_recent_sample_per_client.values() if s.percent_completed is not None
+            ]
 
-                num_clients = max(len(progress_per_client), 1)
-                total_progress = sum(progress_per_client) / num_clients
-            self.progress_reporter.print("Running %s" % tasks, "[%3d%% done]" % (round(total_progress * 100)))
-            if task_finished:
-                self.progress_reporter.finish()
+            num_clients = max(len(progress_per_client), 1)
+            total_progress = sum(progress_per_client) / num_clients
+        self.progress_reporter.print(
+            f"Running {tasks}", "[%3d%% done]" % (round(total_progress * 100))
+        )
+
+        if task_finished:
+            self.progress_reporter.finish()
 
     def post_process_samples(self):
         # we do *not* do this here to avoid concurrent updates (actors are single-threaded) but rather to make it clear that we use
@@ -1016,7 +1012,7 @@ class SamplePostprocessor:
         result = {}
         for arg in args:
             if arg is not None:
-                result.update(arg)
+                result |= arg
         return result
 
 
@@ -1056,8 +1052,10 @@ def calculate_worker_assignments(host_configs, client_count):
         for client_count_for_worker in clients_per_worker:
             worker_assignment = []
             assignment["workers"].append(worker_assignment)
-            for c in range(client_idx, client_idx + client_count_for_worker):
-                worker_assignment.append(c)
+            worker_assignment.extend(
+                iter(range(client_idx, client_idx + client_count_for_worker))
+            )
+
             client_idx += client_count_for_worker
 
         remaining_clients -= clients_on_this_host
@@ -1187,14 +1185,19 @@ class Worker(actor.RallyActor):
                 self.logger.info("Worker[%s] has detected that benchmark has been cancelled. Notifying master...", str(self.worker_id))
                 self.send(self.master, actor.BenchmarkCancelled())
             elif self.executor_future is not None and self.executor_future.done():
-                e = self.executor_future.exception(timeout=0)
-                if e:
+                if e := self.executor_future.exception(timeout=0):
                     self.logger.exception(
                         "Worker[%s] has detected a benchmark failure. Notifying master...", str(self.worker_id), exc_info=e
                     )
                     # the exception might be user-defined and not be on the load path of the master driver. Hence, it cannot be
                     # deserialized on the receiver so we convert it here to a plain string.
-                    self.send(self.master, actor.BenchmarkFailure("Error in load generator [{}]".format(self.worker_id), str(e)))
+                    self.send(
+                        self.master,
+                        actor.BenchmarkFailure(
+                            f"Error in load generator [{self.worker_id}]", str(e)
+                        ),
+                    )
+
                 else:
                     self.logger.info("Worker[%s] is ready for the next task.", str(self.worker_id))
                     self.executor_future = None
@@ -1249,24 +1252,21 @@ class Worker(actor.RallyActor):
             self.executor_future = None
             self.sampler = None
             self.send(self.master, JoinPointReached(self.worker_id, task_allocations))
+        elif self.complete.is_set():
+            self.logger.info(
+                "Worker[%d] skips tasks at index [%d] because it has been asked to complete all tasks until next join point.",
+                self.worker_id,
+                self.current_task_index,
+            )
         else:
-            # There may be a situation where there are more (parallel) tasks than workers. If we were asked to complete all tasks, we not
-            # only need to complete actively running tasks but actually all scheduled tasks until we reach the next join point.
-            if self.complete.is_set():
-                self.logger.info(
-                    "Worker[%d] skips tasks at index [%d] because it has been asked to complete all tasks until next join point.",
-                    self.worker_id,
-                    self.current_task_index,
-                )
-            else:
-                self.logger.info("Worker[%d] is executing tasks at index [%d].", self.worker_id, self.current_task_index)
-                self.sampler = Sampler(start_timestamp=time.perf_counter(), buffer_size=self.sample_queue_size)
-                executor = AsyncIoAdapter(
-                    self.config, self.track, task_allocations, self.sampler, self.cancel, self.complete, self.on_error
-                )
+            self.logger.info("Worker[%d] is executing tasks at index [%d].", self.worker_id, self.current_task_index)
+            self.sampler = Sampler(start_timestamp=time.perf_counter(), buffer_size=self.sample_queue_size)
+            executor = AsyncIoAdapter(
+                self.config, self.track, task_allocations, self.sampler, self.cancel, self.complete, self.on_error
+            )
 
-                self.executor_future = self.pool.submit(executor)
-                self.wakeupAfter(datetime.timedelta(seconds=self.wakeup_interval))
+            self.executor_future = self.pool.submit(executor)
+            self.wakeupAfter(datetime.timedelta(seconds=self.wakeup_interval))
 
     def at_joinpoint(self):
         return self.client_allocations.is_joinpoint(self.current_task_index)
@@ -1394,11 +1394,11 @@ class Sample:
 
     @property
     def operation_name(self):
-        return self._operation_name if self._operation_name else self.task.operation.name
+        return self._operation_name or self.task.operation.name
 
     @property
     def operation_type(self):
-        return self._operation_type if self._operation_type else self.task.operation.type
+        return self._operation_type or self.task.operation.type
 
     @property
     def operation_meta_data(self):
@@ -1443,14 +1443,13 @@ class Sample:
 
 def select_challenge(config, t):
     challenge_name = config.opts("track", "challenge.name")
-    selected_challenge = t.find_challenge_or_default(challenge_name)
-
-    if not selected_challenge:
+    if selected_challenge := t.find_challenge_or_default(challenge_name):
+        return selected_challenge
+    else:
         raise exceptions.SystemSetupError(
             "Unknown challenge [%s] for track [%s]. You can list the available tracks and their "
             "challenges with %s list tracks." % (challenge_name, t.name, PROGRAM_NAME)
         )
-    return selected_challenge
 
 
 class ThroughputCalculator:
@@ -1600,18 +1599,16 @@ class ThroughputCalculator:
         return task_throughput
 
     def map_task_throughput(self, current_samples):
-        throughput = []
-        for sample in current_samples:
-            throughput.append(
-                (
-                    sample.absolute_time,
-                    sample.relative_time,
-                    sample.sample_type,
-                    sample.throughput,
-                    f"{sample.total_ops_unit}/s",
-                )
+        return [
+            (
+                sample.absolute_time,
+                sample.relative_time,
+                sample.sample_type,
+                sample.throughput,
+                f"{sample.total_ops_unit}/s",
             )
-        return throughput
+            for sample in current_samples
+        ]
 
 
 class AsyncIoAdapter:
@@ -1755,8 +1752,7 @@ class AsyncExecutor:
         schedule = self.schedule_handle()
         # Start the schedule's timer early so the warmup period is independent of any deferred start due to ramp-up
         self.schedule_handle.start()
-        rampup_wait_time = self.schedule_handle.ramp_up_wait_time
-        if rampup_wait_time:
+        if rampup_wait_time := self.schedule_handle.ramp_up_wait_time:
             self.logger.debug("client id [%s] waiting [%.2f]s for ramp-up.", self.client_id, rampup_wait_time)
             await asyncio.sleep(rampup_wait_time)
 

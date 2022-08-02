@@ -197,10 +197,9 @@ class BenchmarkCoordinator:
         self.current_challenge = self.current_track.find_challenge_or_default(challenge_name)
         if self.current_challenge is None:
             raise exceptions.SystemSetupError(
-                "Track [{}] does not provide challenge [{}]. List the available tracks with {} list tracks.".format(
-                    self.current_track.name, challenge_name, PROGRAM_NAME
-                )
+                f"Track [{self.current_track.name}] does not provide challenge [{challenge_name}]. List the available tracks with {PROGRAM_NAME} list tracks."
             )
+
         if self.current_challenge.user_info:
             console.info(self.current_challenge.user_info)
         self.race = metrics.create_race(self.cfg, self.current_track, self.current_challenge, self.track_revision)
@@ -218,15 +217,12 @@ class BenchmarkCoordinator:
         self.race_store.store_race(self.race)
         if self.race.challenge.auto_generated:
             console.info(
-                "Racing on track [{}] and car {} with version [{}].\n".format(
-                    self.race.track_name, self.race.car, self.race.distribution_version
-                )
+                f"Racing on track [{self.race.track_name}] and car {self.race.car} with version [{self.race.distribution_version}].\n"
             )
+
         else:
             console.info(
-                "Racing on track [{}], challenge [{}] and car {} with version [{}].\n".format(
-                    self.race.track_name, self.race.challenge_name, self.race.car, self.race.distribution_version
-                )
+                f"Racing on track [{self.race.track_name}], challenge [{self.race.challenge_name}] and car {self.race.car} with version [{self.race.distribution_version}].\n"
             )
 
     def on_task_finished(self, new_metrics):
@@ -239,14 +235,14 @@ class BenchmarkCoordinator:
         self.logger.info("Bulk adding request metrics to metrics store.")
         self.metrics_store.bulk_add(new_metrics)
         self.metrics_store.flush()
-        if not self.cancelled and not self.error:
+        if self.cancelled or self.error:
+            self.logger.info("Suppressing output of summary report. Cancelled = [%r], Error = [%r].", self.cancelled, self.error)
+        else:
             final_results = metrics.calculate_results(self.metrics_store, self.race)
             self.race.add_results(final_results)
             self.race_store.store_race(self.race)
             metrics.results_store(self.cfg).store_results(self.race)
             reporter.summarize(final_results, self.cfg)
-        else:
-            self.logger.info("Suppressing output of summary report. Cancelled = [%r], Error = [%r].", self.cancelled, self.error)
         self.metrics_store.close()
 
 
@@ -259,14 +255,16 @@ def race(cfg, sources=False, distribution=False, external=False, docker=False):
         result = actor_system.ask(benchmark_actor, Setup(cfg, sources, distribution, external, docker))
         if isinstance(result, Success):
             logger.info("Benchmark has finished successfully.")
-        # may happen if one of the load generators has detected that the user has cancelled the benchmark.
         elif isinstance(result, actor.BenchmarkCancelled):
             logger.info("User has cancelled the benchmark (detected by actor).")
         elif isinstance(result, actor.BenchmarkFailure):
             logger.error("A benchmark failure has occurred")
             raise exceptions.RallyError(result.message, result.cause)
         else:
-            raise exceptions.RallyError("Got an unexpected result during benchmarking: [%s]." % str(result))
+            raise exceptions.RallyError(
+                f"Got an unexpected result during benchmarking: [{str(result)}]."
+            )
+
     except KeyboardInterrupt:
         logger.info("User has cancelled the benchmark (detected by race control).")
         # notify the coordinator so it can properly handle this state. Do it blocking so we don't have a race between this message
@@ -285,7 +283,7 @@ def set_default_hosts(cfg, host="127.0.0.1", port=9200):
         logger.info("Using configured hosts %s", configured_hosts.default)
     else:
         logger.info("Setting default host to [%s:%d]", host, port)
-        default_host_object = opts.TargetHosts("{}:{}".format(host, port))
+        default_host_object = opts.TargetHosts(f"{host}:{port}")
         cfg.add(config.Scope.benchmark, "client", "hosts", default_host_object)
 
 
@@ -351,21 +349,22 @@ def run(cfg):
     else:
         logger.info("User specified pipeline [%s].", name)
 
-    if os.environ.get("RALLY_RUNNING_IN_DOCKER", "").upper() == "TRUE":
-        # in this case only benchmarking remote Elasticsearch clusters makes sense
-        if name != "benchmark-only":
-            raise exceptions.SystemSetupError(
-                "Only the [benchmark-only] pipeline is supported by the Rally Docker image.\n"
-                "Add --pipeline=benchmark-only in your Rally arguments and try again.\n"
-                "For more details read the docs for the benchmark-only pipeline in {}\n".format(doc_link("pipelines.html#benchmark-only"))
-            )
+    if (
+        os.environ.get("RALLY_RUNNING_IN_DOCKER", "").upper() == "TRUE"
+        and name != "benchmark-only"
+    ):
+        raise exceptions.SystemSetupError(
+            f'Only the [benchmark-only] pipeline is supported by the Rally Docker image.\nAdd --pipeline=benchmark-only in your Rally arguments and try again.\nFor more details read the docs for the benchmark-only pipeline in {doc_link("pipelines.html#benchmark-only")}\n'
+        )
+
 
     try:
         pipeline = pipelines[name]
     except KeyError:
         raise exceptions.SystemSetupError(
-            "Unknown pipeline [%s]. List the available pipelines with %s list pipelines." % (name, PROGRAM_NAME)
+            f"Unknown pipeline [{name}]. List the available pipelines with {PROGRAM_NAME} list pipelines."
         )
+
     try:
         pipeline(cfg)
     except exceptions.RallyError as e:

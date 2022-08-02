@@ -38,9 +38,7 @@ def bytes_to_human_string(b):
     if mb > 1.0:
         return "%.1f MB" % mb
     kb = bytes_to_kb(b)
-    if kb > 1.0:
-        return "%.1f kB" % kb
-    return "%d bytes" % b
+    return "%.1f kB" % kb if kb > 1.0 else "%d bytes" % b
 
 
 def number_to_human_string(number):
@@ -60,13 +58,12 @@ def seconds_to_ms(s):
 
 
 def seconds_to_hour_minute_seconds(s):
-    if s:
-        hours = s // 3600
-        minutes = (s - 3600 * hours) // 60
-        seconds = s - 3600 * hours - 60 * minutes
-        return hours, minutes, seconds
-    else:
+    if not s:
         return s, s, s
+    hours = s // 3600
+    minutes = (s - 3600 * hours) // 60
+    seconds = s - 3600 * hours - 60 * minutes
+    return hours, minutes, seconds
 
 
 def ms_to_seconds(ms):
@@ -87,4 +84,4 @@ def to_bool(value):
     elif value in ["False", "false", "No", "no", "f", "n", "0", False]:
         return False
     else:
-        raise ValueError("Cannot convert [%s] to bool." % value)
+        raise ValueError(f"Cannot convert [{value}] to bool.")

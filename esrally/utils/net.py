@@ -63,7 +63,11 @@ class Progress:
         if bytes_total:
             completed = bytes_read / bytes_total
             total_as_mb = convert.bytes_to_human_string(bytes_total)
-            self.p.print("%s (%s total size)" % (self.msg, total_as_mb), self.percent_format % (completed * 100))
+            self.p.print(
+                f"{self.msg} ({total_as_mb} total size)",
+                self.percent_format % (completed * 100),
+            )
+
         else:
             self.p.print(self.msg, ".")
 
@@ -134,8 +138,7 @@ def _download_from_gcs_bucket(bucket_name, bucket_path, local_path, expected_siz
 
     ro_scope = "https://www.googleapis.com/auth/devstorage.read_only"
 
-    access_token = os.environ.get("GOOGLE_AUTH_TOKEN")
-    if access_token:
+    if access_token := os.environ.get("GOOGLE_AUTH_TOKEN"):
         credentials = google.oauth2.credentials.Credentials(token=access_token, scopes=(ro_scope,))
     else:
         # https://google-auth.readthedocs.io/en/latest/user-guide.html
@@ -226,7 +229,7 @@ def download(url, local_path, expected_size_in_bytes=None, progress_indicator=No
     ``bytes_read`` and ``total_bytes``. If not provided, no progress is shown. Note that ``total_bytes`` is derived from
     the ``Content-Length`` header and not from the parameter ``expected_size_in_bytes`` for downloads via HTTP(S).
     """
-    tmp_data_set_path = local_path + ".tmp"
+    tmp_data_set_path = f"{local_path}.tmp"
     try:
         scheme = urllib3.util.parse_url(url).scheme
         if scheme in ["s3", "gs"]:

@@ -703,7 +703,7 @@ class CreateSupplierTests(TestCase):
         self.assertEqual(1, len(composite_supplier.suppliers))
         self.assertIsInstance(composite_supplier.suppliers[0], supplier.ElasticsearchDistributionSupplier)
 
-    @mock.patch("esrally.utils.jvm.resolve_path", lambda v: (v, "/opt/java/java{}".format(v)))
+    @mock.patch("esrally.utils.jvm.resolve_path", lambda v: (v, f"/opt/java/java{v}"))
     def test_create_suppliers_for_es_distribution_plugin_source_build(self):
         cfg = config.Config()
         cfg.add(config.Scope.application, "mechanic", "distribution.version", "6.0.0")
@@ -737,7 +737,7 @@ class CreateSupplierTests(TestCase):
         self.assertEqual(external_plugin, composite_supplier.suppliers[2].source_supplier.plugin)
         self.assertIsNotNone(composite_supplier.suppliers[2].source_supplier.builder)
 
-    @mock.patch("esrally.utils.jvm.resolve_path", lambda v: (v, "/opt/java/java{}".format(v)))
+    @mock.patch("esrally.utils.jvm.resolve_path", lambda v: (v, f"/opt/java/java{v}"))
     def test_create_suppliers_for_es_and_plugin_source_build(self):
         cfg = config.Config()
         cfg.add(config.Scope.application, "mechanic", "source.revision", "elasticsearch:abc,community-plugin:current")

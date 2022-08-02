@@ -53,10 +53,7 @@ def test_extract(client, mo):
     def set_corp_size(*args, **kwargs):
         path = args[0]
         mockstat = mock.Mock()
-        if ".bz2" in path:
-            mockstat.st_size = 500
-        else:
-            mockstat.st_size = 1000
+        mockstat.st_size = 500 if ".bz2" in path else 1000
         return mockstat
 
     client.scroll.return_value = {}

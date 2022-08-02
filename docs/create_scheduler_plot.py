@@ -38,7 +38,7 @@ def main():
     sd = scheduler.DeterministicScheduler({"target-interval": 1})
     sp = scheduler.PoissonScheduler({"target-interval": 1})
     # generate data for a little bit longer time frame...
-    for i in range(0, 20):
+    for i in range(20):
         n(tnd, sd)
         n(tnp, sp)
         yn.append(0)
@@ -62,7 +62,7 @@ def main():
 
     if len(sys.argv) == 2:
         output_file_path = sys.argv[1]
-        print("Saving output to [%s]" % output_file_path)
+        print(f"Saving output to [{output_file_path}]")
         plt.savefig(output_file_path, bbox_inches='tight')
     plt.show()
 

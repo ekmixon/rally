@@ -116,7 +116,7 @@ class SimpleTrackRepositoryTests(TestCase):
 class GitRepositoryTests(TestCase):
     class MockGitRepo:
         def __init__(self, remote_url, root_dir, repo_name, resource_name, offline, fetch=True):
-            self.repo_dir = "%s/%s" % (root_dir, repo_name)
+            self.repo_dir = f"{root_dir}/{repo_name}"
 
     @mock.patch("os.path.exists")
     @mock.patch("os.walk")
